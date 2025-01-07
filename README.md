@@ -18,10 +18,9 @@ The Hospital Management System is designed to address key challenges in the heal
 Technical Stack:
 
 Languages: C++
-Algorithms: Priority Queues, Hashing, Graph Traversal (DFS/BFS), Scheduling Algorithms
+Algorithms: Priority Queues, KMP,Linear Search,Dijkstras Algorithm
 
-Tools: Database Management Systems (DBMS), Web Development Frameworks, Healthcare APIs
-
+Tools: Design And Analysis of Algorithm
 
 Impact:
 
@@ -61,7 +60,7 @@ Enables remote consultations and easy access to medical history through patient 
 
 🚀 Skills
 
-Proficient in C++ and Python.
+Proficient in C++.
 
 Strong knowledge of Data Structures and Algorithms.
 
