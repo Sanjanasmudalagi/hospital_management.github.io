@@ -1,0 +1,69 @@
+#include <iostream>
+#include <vector>
+#include <queue>
+#include <climits>
+
+using namespace std;
+
+// Function to implement Dijkstra's Algorithm
+void dijkstra(int vertices, vector<pair<int, int>> adj[], int source) {
+    // Priority queue to store {distance, vertex}
+    priority_queue<pair<int, int>, vector<pair<int, int>>, greater<>> pq;
+
+    // Distance vector to store shortest distance from source to each vertex
+    vector<int> dist(vertices, INT_MAX);
+
+    // Set the distance of the source node to 0 and push it to the queue
+    dist[source] = 0;
+    pq.push({0, source});
+
+    while (!pq.empty()) {
+        int distance = pq.top().first;
+        int node = pq.top().second;
+        pq.pop();
+
+        // Traverse all adjacent vertices of the current node
+        for (auto neighbor : adj[node]) {
+            int nextNode = neighbor.first;
+            int edgeWeight = neighbor.second;
+
+            // Relaxation step
+            if (dist[node] + edgeWeight < dist[nextNode]) {
+                dist[nextNode] = dist[node] + edgeWeight;
+                pq.push({dist[nextNode], nextNode});
+            }
+        }
+    }
+
+    // Print the shortest distances
+    cout << "Vertex\tDistance from Source" << endl;
+    for (int i = 0; i < vertices; i++) {
+        cout << i << "\t" << dist[i] << endl;
+    }
+}
+
+int main() {
+    int vertices, edges;
+    cout << "Enter the number of vertices and edges: ";
+    cin >> vertices >> edges;
+
+    // Adjacency list to represent the graph
+    vector<pair<int, int>> adj[vertices];
+
+    cout << "Enter edges in the format (u v w):" << endl;
+    for (int i = 0; i < edges; i++) {
+        int u, v, w;
+        cin >> u >> v >> w;
+        adj[u].push_back({v, w}); // Directed graph
+        adj[v].push_back({u, w}); // For undirected graph, include this line
+    }
+
+    int source;
+    cout << "Enter the source vertex: ";
+    cin >> source;
+
+    // Call Dijkstra's Algorithm
+    dijkstra(vertices, adj, source);
+
+    return 0;
+}
