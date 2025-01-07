@@ -1,0 +1,3669 @@
+#include <iostream>
+#include <queue>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <fstream>
+#include <vector>
+#include <iomanip>
+#include <map>
+#include <algorithm>
+#include<set>
+#include<cstdlib>
+#include <sstream>
+#include <limits>
+#include <ctime>
+
+using namespace std;
+set<string> prescriptionIDs;
+
+//USER
+struct User {
+    string username;
+    string password;
+    string role;
+    // "admin" or "doctor"
+};
+
+// PATIENT REGISTRATION MODULE
+struct Patient
+{
+    string id;
+    string name;
+    int age;
+    string ailment;
+    int condition; // 1 for Emergency, 0 for Non-emergency
+    int priority;  // Priority for emergency cases
+    string department;
+    string pastTreatmentRecord;
+    string address;
+    string phoneNumber;
+    string emergencyContact;
+
+    bool operator<(const Patient& other) const
+    {
+        if (condition == 1 && other.condition == 1)
+        {
+            return priority > other.priority;
+        }
+        return condition < other.condition;
+    }
+};
+
+vector<User> users;
+vector<Patient> PatientList;
+priority_queue<Patient> patientQueue;
+unordered_map<string, Patient> patientMap;
+unordered_set<string> patientIds;
+const string DATA_FILE = "patients.txt";
+const string TREATED_FILE = "treated_patients.txt";
+
+void clearScreen()
+{
+#ifdef _WIN32
+    system("cls"); // Windows-specific clear command
+#else
+    system("clear"); // Unix/Linux/Mac clear command
+#endif
+}
+
+void waitForKeyPress()
+ {
+    cout << "\nPress any key to return to the main menu...";
+    cin.ignore(); // Ignore leftover newline character in the input buffer
+    cin.get();    // Wait for user to press Enter or any key
+}
+
+// Function to authenticate the user
+bool authenticateUser(const vector<User>& users, const string& username, const string& password, string& role)
+ {
+    for (const auto& user : users)
+    {
+        if (user.username == username && user.password == password)
+        {
+            role = user.role;
+            return true;
+        }
+    }
+    return false;
+}
+
+void saveUsers()
+{
+    ofstream file("users.txt");
+    for (auto &u : users)
+    {
+        file << u.username << "," << u.password << "," << u.role << "\n";
+    }
+    file.close();
+}
+
+void loadUsers(vector<User>& users)
+{
+    ifstream file("users.txt");
+    string line;
+
+    //check if the file opened successfully
+    if(!file)
+    {
+        cerr<<"Error opening file!"<<endl;
+        return;
+    }
+    while (getline(file, line))
+    {
+        User u;
+        stringstream ss(line);
+        getline(ss, u.username, ',');
+        getline(ss, u.password, ',');
+        getline(ss, u.role);
+        users.push_back(u);
+    }
+    file.close();
+}
+
+void loadPatientsFromFile()
+{
+    ifstream file(DATA_FILE);
+    if (!file.is_open()) return;
+    Patient p;
+    while (file >> p.id >> p.name >> p.age >> p.ailment >> p.condition >> p.priority >> p.department)
+    {
+        patientQueue.push(p);
+        patientMap[p.id] = p;
+        patientIds.insert(p.id);
+    }
+    file.close();
+}
+
+void savePatientsToFile()
+{
+    ofstream file(DATA_FILE);
+    while (!patientQueue.empty())
+    {
+        Patient p = patientQueue.top();
+        file << p.id << " " << p.name << " " << p.age << " " << p.ailment << " " << p.condition << " " << p.priority << " " << p.department << "\n";
+        patientQueue.pop();
+    }
+    file.close();
+}
+
+void registerPatient()
+{
+    Patient newPatient;
+    while (true)
+    {
+        cout << "\nEnter patient's unique ID (1 alphabet + 3 digits): ";
+        cin >> newPatient.id;
+        if (newPatient.id.length() != 4 || !isalpha(newPatient.id[0]) ||
+            !isdigit(newPatient.id[1]) || !isdigit(newPatient.id[2]) || !isdigit(newPatient.id[3])) {
+            cout << "ID must start with 1 alphabet followed by 3 digits. Try again.\n";
+            continue;
+        }
+        if (patientIds.count(newPatient.id)) {
+            cout << "ID already exists. Try another.\n";
+        } else {
+            break;
+        }
+    }
+
+    while (true)
+    {
+        cout << "Enter patient's name (only alphabets): ";
+        cin.ignore();
+        getline(cin, newPatient.name);
+        if (!all_of(newPatient.name.begin(), newPatient.name.end(), [](char c) { return isalpha(c) || isspace(c); })) {
+            cout << "Name must contain only alphabets. Try again.\n";
+            continue;
+        }
+        break;
+    }
+
+    cout << "Enter patient's age: ";
+    cin >> newPatient.age;
+
+    while (true)
+    {
+        cout << "Enter ailment (only alphabets): ";
+        cin.ignore();
+        getline(cin, newPatient.ailment);
+        if (!all_of(newPatient.ailment.begin(), newPatient.ailment.end(), [](char c) { return isalpha(c) || isspace(c); })) {
+            cout << "Ailment must contain only alphabets. Try again.\n";
+            continue;
+        }
+        break;
+    }
+
+    cout << "Enter condition (1 for Emergency, 0 for Non-emergency): ";
+    cin >> newPatient.condition;
+
+    if (newPatient.condition == 1) {
+        cout << "Enter priority (1-High, 2-Medium, 3-Low): ";
+        cin >> newPatient.priority;
+    } else {
+        newPatient.priority = 4; // Default priority for non-emergency
+    }
+
+    while (true) {
+        cout << "Enter department (only alphabets): ";
+        cin.ignore();
+        getline(cin, newPatient.department);
+        if (!all_of(newPatient.department.begin(), newPatient.department.end(), [](char c) { return isalpha(c) || isspace(c); })) {
+            cout << "Department must contain only alphabets. Try again.\n";
+            continue;
+        }
+        break;
+    }
+
+    patientQueue.push(newPatient);
+    patientMap[newPatient.id] = newPatient;
+    patientIds.insert(newPatient.id);
+
+    ofstream file(DATA_FILE, ios::app);
+    file << newPatient.id << "," << newPatient.name << "," << newPatient.age << ","
+         << newPatient.ailment << "," << newPatient.condition << ","
+         << newPatient.priority << "," << newPatient.department << "\n";
+    file.close();
+
+    cout << "Patient registered successfully!\n";
+}
+
+
+void viewPatients() {
+    ifstream file(DATA_FILE);
+    if (!file.is_open()) {
+        cout << "No patients registered.\n";
+        return;
+    }
+
+    vector<Patient> patients;
+    string line;
+
+    while (getline(file, line)) {
+        stringstream ss(line);
+        Patient p;
+        string conditionStr, priorityStr;
+
+        // Parse comma-separated values
+        getline(ss, p.id, ',');
+        getline(ss, p.name, ',');
+        ss >> p.age;
+        ss.ignore(); // Ignore the comma
+        getline(ss, p.ailment, ',');
+        ss >> p.condition;
+        ss.ignore(); // Ignore the comma
+        ss >> p.priority;
+        ss.ignore(); // Ignore the comma
+        getline(ss, p.department, ',');
+
+        patients.push_back(p);
+    }
+    file.close();
+
+    if (patients.empty()) {
+        cout << "No patients registered.\n";
+        return;
+    }
+
+    // Sort patients by priority (lowest value = highest priority)
+    sort(patients.begin(), patients.end(), [](const Patient& a, const Patient& b) {
+        if (a.condition == b.condition) {
+            return a.priority < b.priority; // Higher priority comes first
+        }
+        return a.condition > b.condition; // Emergency cases come first
+    });
+
+    // Display patients
+    cout << left << setw(10) << "ID"
+         << setw(20) << "Name"
+         << setw(5) << "Age"
+         << setw(25) << "Ailment"
+         << setw(15) << "Priority"
+         << setw(20) << "Department" << endl;
+    cout << string(90, '-') << endl;
+
+    for (const auto& patient : patients) {
+        string priorityStr = (patient.priority == 1) ? "High" :
+                             (patient.priority == 2) ? "Medium" :
+                             (patient.priority == 3) ? "Low" : "NE";
+        cout << left << setw(10) << patient.id
+             << setw(20) << patient.name
+             << setw(5) << patient.age
+             << setw(25) << patient.ailment
+             << setw(15) << priorityStr
+             << setw(20) << patient.department << endl;
+    }
+}
+
+void displayPatientsByPriority() {
+    ifstream file(DATA_FILE);
+    if (!file.is_open()) {
+        cout << "No registered patients found.\n";
+        return;
+    }
+
+    int priorityLevel;
+    cout << "Enter the priority level to display (1-High, 2-Medium, 3-Low, 4-NE): ";
+    cin >> priorityLevel;
+
+    if (priorityLevel < 1 || priorityLevel > 4) {
+        cout << "Invalid priority level. Please enter a value between 1 and 4.\n";
+        return;
+    }
+
+    vector<Patient> matchingPatients;
+    string line;
+
+    // Read and parse the patient file
+    while (getline(file, line)) {
+        stringstream ss(line);
+        Patient p;
+        string priorityStr, conditionStr;
+
+        getline(ss, p.id, ',');
+        getline(ss, p.name, ',');
+        ss >> p.age;
+        ss.ignore();
+        getline(ss, p.ailment, ',');
+        ss >> p.condition;
+        ss.ignore();
+        ss >> p.priority;
+        ss.ignore();
+        getline(ss, p.department, ',');
+
+        if (p.priority == priorityLevel) {
+            matchingPatients.push_back(p);
+        }
+    }
+    file.close();
+
+    // Display the matching patients
+    if (matchingPatients.empty()) {
+        cout << "No patients found with priority level " << priorityLevel << ".\n";
+        return;
+    }
+
+    cout << left << setw(10) << "ID"
+         << setw(20) << "Name"
+         << setw(5) << "Age"
+         << setw(25) << "Ailment"
+         << setw(15) << "Condition"
+         << setw(15) << "Priority"
+         << setw(20) << "Department" << endl;
+    cout << string(110, '-') << endl;
+
+    for (const auto& patient : matchingPatients) {
+        string conditionStr = (patient.condition == 1) ? "Emergency" : "Non-Emergency";
+        string priorityStr = (patient.priority == 1) ? "High" :
+                             (patient.priority == 2) ? "Medium" :
+                             (patient.priority == 3) ? "Low" : "NE";
+
+        cout << left << setw(10) << patient.id
+             << setw(20) << patient.name
+             << setw(5) << patient.age
+             << setw(25) << patient.ailment
+             << setw(15) << conditionStr
+             << setw(15) << priorityStr
+             << setw(20) << patient.department << endl;
+    }
+}
+
+
+void attendToPatient() {
+    ifstream file(DATA_FILE);
+    if (!file.is_open()) {
+        cout << "No patients registered or file not found.\n";
+        return;
+    }
+
+    // Load all patients into a vector
+    vector<Patient> patients;
+    string line;
+
+    while (getline(file, line)) {
+        stringstream ss(line);
+        Patient p;
+
+        // Parse comma-separated values
+        getline(ss, p.id, ',');
+        getline(ss, p.name, ',');
+        ss >> p.age;
+        ss.ignore(); // Ignore the comma
+        getline(ss, p.ailment, ',');
+        ss >> p.condition;
+        ss.ignore(); // Ignore the comma
+        ss >> p.priority;
+        ss.ignore(); // Ignore the comma
+        getline(ss, p.department, ',');
+
+        patients.push_back(p);
+    }
+    file.close();
+
+    if (patients.empty()) {
+        cout << "No patients to attend to.\n";
+        return;
+    }
+
+    // Find the highest-priority patient
+    auto it = max_element(patients.begin(), patients.end(), [](const Patient& a, const Patient& b) {
+        if (a.condition == b.condition) {
+            return a.priority > b.priority; // Lower priority value means higher priority
+        }
+        return a.condition < b.condition; // Emergency cases (condition == 1) come first
+    });
+
+    Patient highestPriorityPatient = *it;
+    cout << "Attending to patient:\n"
+         << "ID: " << highestPriorityPatient.id
+         << " Name: " << highestPriorityPatient.name
+         << " Age: " << highestPriorityPatient.age
+         << " Ailment: " << highestPriorityPatient.ailment
+         << " Department: " << highestPriorityPatient.department << "\n";
+
+    // Remove the attended patient from the list
+    patients.erase(it);
+
+    // Save the remaining patients back to the file
+    ofstream outFile(DATA_FILE, ios::trunc);
+    for (const auto& patient : patients) {
+        outFile << patient.id << "," << patient.name << "," << patient.age << ","
+                << patient.ailment << "," << patient.condition << ","
+                << patient.priority << "," << patient.department << "\n";
+    }
+    outFile.close();
+
+    // Add the attended patient to the treated patients file
+    ofstream treatedFile(TREATED_FILE, ios::app);
+    treatedFile << highestPriorityPatient.id << "," << highestPriorityPatient.name << ","
+                << highestPriorityPatient.age << "," << highestPriorityPatient.ailment << ","
+                << highestPriorityPatient.condition << "," << highestPriorityPatient.priority << ","
+                << highestPriorityPatient.department << "\n";
+    treatedFile.close();
+}
+
+
+void checkNextPatient() {
+    if (patientQueue.empty()) {
+        cout << "No patients registered.\n";
+        return;
+    }
+
+    priority_queue<Patient> tempQueue = patientQueue;
+    Patient nextPatient;
+    bool emergencyFound = false;
+
+    // Check for emergency patients first
+    while (!tempQueue.empty()) {
+        nextPatient = tempQueue.top();
+        tempQueue.pop();
+
+        if (nextPatient.condition == 1) { // Emergency patient
+            emergencyFound = true;
+            cout << "Next patient to be attended (Emergency):\n";
+            cout << "ID: " << nextPatient.id << "\nName: " << nextPatient.name
+                 << "\nAge: " << nextPatient.age << "\nAilment: " << nextPatient.ailment
+                 << "\nPriority: " << nextPatient.priority << "\nDepartment: " << nextPatient.department << "\n";
+            return;
+        }
+    }
+
+    // If no emergency patients, check for non-emergency patients
+    if (!emergencyFound) {
+        tempQueue = patientQueue; // Reset the temporary queue
+        bool nonEmergencyFound = false;
+
+        cout << "No emergency patients. Displaying non-emergency patients in the queue:\n";
+        cout << left << setw(10) << "ID" << setw(20) << "Name" << setw(5) << "Age" << setw(25) << "Ailment"
+             << setw(15) << "Priority" << setw(20) << "Department" << endl;
+        cout << string(90, '-') << endl;
+
+        while (!tempQueue.empty()) {
+            nextPatient = tempQueue.top();
+            tempQueue.pop();
+
+            if (nextPatient.condition == 0) { // Non-emergency patient
+                nonEmergencyFound = true;
+                cout << left << setw(10) << nextPatient.id << setw(20) << nextPatient.name << setw(5)
+                     << nextPatient.age << setw(25) << nextPatient.ailment << setw(15)
+                     << nextPatient.priority << setw(20) << nextPatient.department << endl;
+            }
+        }
+
+        if (!nonEmergencyFound) {
+            cout << "No non-emergency patients are currently in the queue.\n";
+        }
+    }
+}
+
+
+
+// Helper: Build prefix table for KMP
+vector<int> buildPrefixTable(const string& pattern) {
+    int m = pattern.length();
+    vector<int> prefix(m, 0);
+    int j = 0;
+
+    for (int i = 1; i < m; ++i) {
+        if (pattern[i] == pattern[j]) {
+            j++;
+            prefix[i] = j;
+        } else if (j > 0) {
+            j = prefix[j - 1];
+            i--; // Retry current character with new j
+        } else {
+            prefix[i] = 0;
+        }
+    }
+    return prefix;
+}
+
+// KMP Algorithm for string matching
+bool kmpSearch(const string& text, const string& pattern) {
+    int n = text.length();
+    int m = pattern.length();
+    vector<int> prefix = buildPrefixTable(pattern);
+
+    int j = 0; // Index for pattern
+    for (int i = 0; i < n; ++i) {
+        if (text[i] == pattern[j]) {
+            j++;
+            if (j == m) return true; // Pattern found
+        } else if (j > 0) {
+            j = prefix[j - 1];
+            i--; // Retry current character with new j
+        }
+    }
+    return false; // Pattern not found
+}
+
+// Search Patient by ID using KMP
+void searchPatientById() {
+    string searchId;
+    cout << "Enter patient ID: ";
+    cin >> searchId;
+
+    ifstream file("patients.txt");
+    if (!file.is_open()) {
+        cout << "Error: Unable to open patients.txt.\n";
+        return;
+    }
+
+    string line;
+    bool found = false;
+
+    while (getline(file, line)) {
+        stringstream ss(line);
+        string id, name, ailment, department;
+        int age, condition, priority;
+
+        // Parse the line (assumes comma-separated values)
+        getline(ss, id, ',');
+        getline(ss, name, ',');
+        ss >> age;
+        ss.ignore(); // Ignore comma
+        getline(ss, ailment, ',');
+        ss >> condition;
+        ss.ignore(); // Ignore comma
+        ss >> priority;
+        ss.ignore(); // Ignore comma
+        getline(ss, department, ',');
+
+        // Use KMP to search for the ID
+        if (kmpSearch(id, searchId)) {
+            found = true;
+            cout << "Patient found:\n"
+                 << "ID: " << id << "\n"
+                 << "Name: " << name << "\n"
+                 << "Age: " << age << "\n"
+                 << "Ailment: " << ailment << "\n"
+                 << "Condition: " << (condition == 1 ? "Emergency" : "Non-Emergency") << "\n"
+                 << "Priority: " << priority << "\n"
+                 << "Department: " << department << "\n";
+            break;
+        }
+    }
+
+    if (!found) {
+        cout << "Patient not found.\n";
+    }
+
+    file.close();
+}
+
+
+void deletePatientById() {
+    string id;
+    cout << "Enter patient ID to delete: ";
+    cin >> id;
+
+    // Check if the patient ID exists in the map
+    if (patientMap.find(id) == patientMap.end()) {
+        cout << "Patient with ID " << id << " not found.\n";
+        return;
+    }
+
+    // Remove from in-memory data structures
+    patientMap.erase(id);
+    patientIds.erase(id);
+
+    priority_queue<Patient> tempQueue;
+    for (const auto& entry : patientMap) {
+        tempQueue.push(entry.second);
+    }
+    patientQueue.swap(tempQueue);
+
+    // Remove from the file
+    ifstream file(DATA_FILE);
+    ofstream tempFile("temp.txt");
+    if (!file.is_open() || !tempFile.is_open()) {
+        cout << "Error: Unable to open the file.\n";
+        return;
+    }
+
+    string line;
+    while (getline(file, line)) {
+        stringstream ss(line);
+        string fileId;
+        getline(ss, fileId, ','); // Adjust delimiter if needed
+        fileId.erase(remove(fileId.begin(), fileId.end(), ' '), fileId.end());
+
+        if (fileId != id) {
+            tempFile << line << "\n";
+        }
+    }
+
+    file.close();
+    tempFile.close();
+
+    // Replace the original file with the updated file
+    if (remove(DATA_FILE.c_str()) != 0 || rename("temp.txt", DATA_FILE.c_str()) != 0) {
+        cout << "Error: Unable to update the file.\n";
+        return;
+    }
+
+    cout << "Patient with ID " << id << " deleted successfully.\n";
+}
+
+
+
+// Function to view treated patients
+void viewTreatedPatients() {
+    ifstream file("treated_patients.txt");
+    if (!file.is_open()) {
+        cout << "No treated patients available.\n";
+        return;
+    }
+
+    // Print table header
+    cout << left << setw(10) << "ID"
+         << setw(20) << "Name"
+         << setw(10) << "Age"
+         << setw(25) << "Ailment"
+         << setw(10) << "Priority"
+         << setw(20) << "Department" << endl;
+    cout << string(90, '-') << endl;
+
+    string line;
+    while (getline(file, line)) {
+        stringstream ss(line);
+        string id, name, ailment, department;
+        int age, condition, priority;
+
+        // Parse the line (assumes comma-separated values)
+        getline(ss, id, ',');
+        getline(ss, name, ',');
+        ss >> age;
+        ss.ignore(); // Ignore the comma
+        getline(ss, ailment, ',');
+        ss >> condition;
+        ss.ignore(); // Ignore the comma
+        ss >> priority;
+        ss.ignore(); // Ignore the comma
+        getline(ss, department, ',');
+
+        // Format and display the patient data
+        cout << left << setw(10) << id
+             << setw(20) << name
+             << setw(10) << age
+             << setw(25) << ailment
+             << setw(10) << priority
+             << setw(20) << department << endl;
+    }
+
+    file.close();
+}
+
+
+// Function to view patients by department
+void viewPatientsByDepartment() {
+    string department;
+    cout << "Enter the department: ";
+    cin.ignore();
+    getline(cin, department);
+
+    ifstream file("patients.txt");
+    if (!file.is_open()) {
+        cout << "No patients registered or file not found.\n";
+        return;
+    }
+
+    // Print table header
+    cout << left << setw(10) << "ID"
+         << setw(20) << "Name"
+         << setw(10) << "Age"
+         << setw(25) << "Ailment"
+         << setw(10) << "Priority"
+         << setw(20) << "Department" << endl;
+    cout << string(90, '-') << endl;
+
+    string line;
+    bool found = false;
+
+    while (getline(file, line)) {
+        stringstream ss(line);
+        string id, name, ailment, patientDepartment;
+        int age, condition, priority;
+
+        // Parse the line (assumes comma-separated values)
+        getline(ss, id, ',');
+        getline(ss, name, ',');
+        ss >> age;
+        ss.ignore(); // Ignore the comma
+        getline(ss, ailment, ',');
+        ss >> condition;
+        ss.ignore(); // Ignore the comma
+        ss >> priority;
+        ss.ignore(); // Ignore the comma
+        getline(ss, patientDepartment, ',');
+
+        // Check if the patient belongs to the specified department
+        if (patientDepartment == department) {
+            found = true;
+            // Print the patient's details
+            cout << left << setw(10) << id
+                 << setw(20) << name
+                 << setw(10) << age
+                 << setw(25) << ailment
+                 << setw(10) << priority
+                 << setw(20) << patientDepartment << endl;
+        }
+    }
+
+    if (!found) {
+        cout << "No patients found in the " << department << " department.\n";
+    }
+
+    file.close();
+}
+
+
+void clearPatientData()
+{
+    // Confirm the user's intent
+    char confirmation;
+    cout << "Are you sure you want to delete all patient data? (y/n): ";
+    cin >> confirmation;
+
+    if (tolower(confirmation) == 'y')
+    {
+        // Clear file data by opening in write mode
+        ofstream file(DATA_FILE, ios::trunc);
+        file.close();
+
+        // Clear in-memory data structures
+        while (!patientQueue.empty()) patientQueue.pop();
+        patientMap.clear();
+        patientIds.clear();
+
+        cout << "All patient data has been cleared successfully.\n";
+    }
+    else
+    {
+        cout << "Operation cancelled. Patient data was not cleared.\n";
+    }
+}
+
+void editPatientRecord() {
+    string patientID;
+    cout << "Enter Patient ID to edit: ";
+    cin >> patientID;
+
+    for (auto &p : PatientList) { // Use 'PatientList' instead of 'Patient'
+        if (p.id == patientID) {  // Use 'id' instead of 'patientID'
+            cout << "Editing Patient Record...\n";
+            cout << "Enter New Name (current: " << p.name << "): ";
+            cin.ignore();
+            getline(cin, p.name);
+            cout << "Enter New Age (current: " << p.age << "): ";
+            cin >> p.age;
+            cout << "Enter New Ailment (current: " << p.ailment << "): ";
+            cin.ignore();
+            getline(cin, p.ailment);
+            cout << "Enter New Past Treatment Record (current: " << p.pastTreatmentRecord << "): ";
+            getline(cin, p.pastTreatmentRecord);
+            cout << "Enter New Address (current: " << p.address << "): ";
+            getline(cin, p.address);
+            cout << "Enter New Phone Number (current: " << p.phoneNumber << "): ";
+            cin >> p.phoneNumber;
+            cout << "Enter New Emergency Contact (current: " << p.emergencyContact << "): ";
+            cin.ignore();
+            getline(cin, p.emergencyContact);
+            cout << "Patient Record Updated!\n";
+            savePatientsToFile();  // Ensure this function is defined elsewhere
+            return;
+        }
+    }
+    cout << "Error: Patient not found!\n";
+}
+
+void searchPatientByName() {
+    string name;
+    cout << "Enter Patient Name to search: ";
+    cin.ignore();
+    getline(cin, name);
+    bool found = false;
+
+    for (const auto& p : PatientList) { // Use 'PatientList' instead of 'Patient'
+        if (p.name == name) {
+            found = true;
+            cout << "Patient ID: " << p.id << "\n" // Use 'id' instead of 'patientID'
+                 << "Name: " << p.name << "\n"
+                 << "Age: " << p.age << "\n"
+                 << "Ailment: " << p.ailment << "\n"
+                 << "Past Treatment Record: " << p.pastTreatmentRecord << "\n"
+                 << "Address: " << p.address << "\n"
+                 << "Phone Number: " << p.phoneNumber << "\n"
+                 << "Emergency Contact: " << p.emergencyContact << "\n";
+        }
+    }
+
+    if (!found) {
+        cout << "No Patient found with the given name.\n";
+    }
+}
+
+void searchPatientByID() {
+    string patientID;
+    cout << "Enter Patient ID to search: ";
+    cin >> patientID;
+    bool found = false;
+
+    for (const auto& p : PatientList) { // Use 'PatientList' instead of 'Patient'
+        if (p.id == patientID) { // Use 'id' instead of 'patientID'
+            found = true;
+            cout << "Patient ID: " << p.id << "\n" // Use 'id' instead of 'patientID'
+                 << "Name: " << p.name << "\n"
+                 << "Age: " << p.age << "\n"
+                 << "Ailment: " << p.ailment << "\n"
+                 << "Past Treatment Record: " << p.pastTreatmentRecord << "\n"
+                 << "Address: " << p.address << "\n"
+                 << "Phone Number: " << p.phoneNumber << "\n"
+                 << "Emergency Contact: " << p.emergencyContact << "\n";
+        }
+    }
+
+    if (!found) {
+        cout << "No Patient found with the given ID.\n";
+    }
+}
+
+void searchPatientsByAilment() {
+    string ailment;
+    cout << "Enter Ailment to search: ";
+    cin.ignore();
+    getline(cin, ailment); // Using getline to allow spaces in the ailment description
+
+    bool found = false;
+    for (const auto& p : PatientList) { // Use 'PatientList' instead of 'Patient'
+        if (p.ailment == ailment) {
+            found = true;
+            cout << "Patient ID: " << p.id << "\n" // Use 'id' instead of 'patientID'
+                 << "Name: " << p.name << "\n"
+                 << "Age: " << p.age << "\n"
+                 << "Ailment: " << p.ailment << "\n";
+        }
+    }
+
+    if (!found) {
+        cout << "No patient found with the given ailment.\n";
+    }
+}
+
+// PHARMACY MANAGEMENT MODULE
+struct Medicine
+{
+    string id;
+    string name;
+    string type;
+    int quantity;
+    double price;
+    double totalPrice;
+};
+
+struct Invoice
+{
+    string date;
+    string medicineId;
+    string medicineName;
+    int quantity;
+    double totalPrice;
+};
+
+vector<Medicine> inventory;
+vector<Invoice> invoices;
+unordered_set<string> medicineIds;
+const string MED_FILE = "medicines.txt";
+const string INVOICE_FILE = "invoices.txt";
+
+void loadMedicinesFromFile()
+{
+    ifstream file(MED_FILE);
+    inventory.clear(); // Clear existing inventory
+    Medicine med;
+    while (file >> med.id >> med.name >> med.type >> med.quantity >> med.price >> med.totalPrice)
+    {
+        inventory.push_back(med);
+        medicineIds.insert(med.id);
+    }
+    file.close();
+}
+
+
+void loadInvoicesFromFile()
+{
+    ifstream file(INVOICE_FILE);
+    if (!file.is_open()) return;
+    string date, medicineId, medicineName;
+    int quantity;
+    double totalPrice;
+    while (file >> date >> medicineId >> medicineName >> quantity >> totalPrice)
+    {
+        invoices.push_back({date, medicineId, medicineName, quantity, totalPrice});
+    }
+    file.close();
+}
+
+void saveMedicinesToFile()
+{
+    ofstream file(MED_FILE);
+    for (const auto& med : inventory)
+    {
+        file << med.id << " " << med.name << " " << med.type << " " << med.quantity << " " << med.price << " " << med.totalPrice << "\n";
+    }
+    file.close();
+}
+
+void saveInvoicesToFile()
+{
+    ofstream file(INVOICE_FILE);
+    for (const auto& invoice : invoices)
+    {
+        file << invoice.date << " " << invoice.medicineId << " " << invoice.medicineName << " " << invoice.quantity << " " << invoice.totalPrice << "\n";
+    }
+    file.close();
+}
+
+void addMedicine() {
+    Medicine med;
+    while (true) {
+        cout << "Enter unique Medicine ID (1 alphabet + 3 digits): ";
+        cin >> med.id;
+        if (med.id.length() != 4 || !isalpha(med.id[0]) ||
+            !isdigit(med.id[1]) || !isdigit(med.id[2]) || !isdigit(med.id[3])) {
+            cout << "ID must start with 1 alphabet followed by 3 digits. Try again.\n";
+            continue;
+        }
+        if (medicineIds.count(med.id)) {
+            cout << "Invalid or duplicate ID. Try again.\n";
+        } else {
+            break;
+        }
+    }
+    cout << "Enter Medicine Name: ";
+    cin >> med.name;
+    cout << "Enter Type of Medicine (e.g., Antibiotic, Painkiller, Antacid): ";
+    cin.ignore();
+    getline(cin, med.type);
+    cout << "Enter Quantity: ";
+    cin >> med.quantity;
+    cout << "Enter Price per tab: ";
+    cin >> med.price;
+    med.totalPrice = med.quantity * med.price;
+    inventory.push_back(med);
+    medicineIds.insert(med.id);
+    saveMedicinesToFile();
+    cout << "Medicine added successfully! Total Price: " << med.totalPrice << "\n";
+}
+
+
+// Function to display medicines
+
+void displayMedicines()
+{
+    loadMedicinesFromFile(); // Load medicines from file
+    std::sort(inventory.begin(), inventory.end(), [](const Medicine& a, const Medicine& b)
+    {
+        return a.name < b.name; // Correct comparator
+    });
+
+    if (inventory.empty())
+    {
+        cout << "No medicines available.\n";
+        return;
+    }
+
+    cout << left << setw(10) << "ID" << setw(20) << "Name" << setw(20) << "Type" << setw(10) << "Quantity"
+         << setw(10) << "Price" << setw(15) << "Total Price" << endl;
+    cout << string(85, '-') << endl;
+
+    for (const auto& med : inventory)
+    {
+        cout << left << setw(10) << med.id << setw(20) << med.name << setw(20) << med.type << setw(10) << med.quantity
+             << setw(10) << med.price << setw(15) << med.totalPrice << endl;
+    }
+}
+
+
+// Search Medicine by Name or Type using KMP
+void searchMedicineById() {
+    int choice;
+    cout << "\nSearch Medicine:\n";
+    cout << "1. By Name\n";
+    cout << "2. By Type\n";
+    cout << "Enter your choice: ";
+    cin >> choice;
+
+    string query;
+    cout << "Enter search query: ";
+    cin.ignore();
+    getline(cin, query);
+
+    bool found = false;
+
+    if (choice == 1) {
+        // Search by Name
+        cout << "\nSearching medicines by Name...\n";
+        for (const auto& med : inventory) {
+            if (kmpSearch(med.name, query)) {
+                if (!found) {
+                    cout << left << setw(10) << "ID"
+                         << setw(20) << "Name"
+                         << setw(20) << "Type"
+                         << setw(10) << "Quantity"
+                         << setw(10) << "Price" << endl;
+                    cout << string(70, '-') << endl;
+                }
+                found = true;
+                cout << left << setw(10) << med.id
+                     << setw(20) << med.name
+                     << setw(20) << med.type
+                     << setw(10) << med.quantity
+                     << setw(10) << med.price << endl;
+            }
+        }
+    } else if (choice == 2) {
+        // Search by Type
+        cout << "\nSearching medicines by Type...\n";
+        for (const auto& med : inventory) {
+            if (kmpSearch(med.type, query)) {
+                if (!found) {
+                    cout << left << setw(10) << "ID"
+                         << setw(20) << "Name"
+                         << setw(20) << "Type"
+                         << setw(10) << "Quantity"
+                         << setw(10) << "Price" << endl;
+                    cout << string(70, '-') << endl;
+                }
+                found = true;
+                cout << left << setw(10) << med.id
+                     << setw(20) << med.name
+                     << setw(20) << med.type
+                     << setw(10) << med.quantity
+                     << setw(10) << med.price << endl;
+            }
+        }
+    } else {
+        cout << "Invalid choice.\n";
+        return;
+    }
+
+    if (!found) {
+        cout << "No matching medicines found.\n";
+    }
+}
+
+void generateInvoice() {
+    string prescriptionID, patientID;
+    vector<pair<string, int>> purchasedMedicines;
+    double totalAmount = 0;
+
+    while (true) {
+        cout << "Enter unique Prescription ID (2 alphabets + 2 digits): ";
+        cin >> prescriptionID;
+        if (prescriptionID.length() != 4 || !isalpha(prescriptionID[0]) || !isalpha(prescriptionID[1]) ||
+            !isdigit(prescriptionID[2]) || !isdigit(prescriptionID[3])) {
+            cout << "ID must start with 2 alphabets followed by 2 digits. Try again.\n";
+            continue;
+        }
+        if (prescriptionIDs.count(prescriptionID)) {
+            cout << "Duplicate Prescription ID. Try again.\n";
+        } else {
+            prescriptionIDs.insert(prescriptionID);
+            break;
+        }
+    }
+
+    cout << "Enter Patient ID: ";
+    cin >> patientID;
+
+    while (true) {
+        string medicineID;
+        int quantity;
+        cout << "Enter Medicine ID: ";
+        cin >> medicineID;
+
+        auto it = find_if(inventory.begin(), inventory.end(), [&medicineID](const Medicine& med) {
+            return med.id == medicineID;
+        });
+
+        if (it == inventory.end()) {
+            cout << "Medicine ID not found. Try again.\n";
+            continue;
+        }
+
+        cout << "Enter Quantity: ";
+        cin >> quantity;
+        if (quantity > it->quantity) {
+            cout << "Insufficient stock for this medicine. Try again.\n";
+            continue;
+        }
+
+        it->quantity -= quantity;
+        it->totalPrice = it->quantity * it->price;
+        double amount = it->price * quantity;
+        totalAmount += amount;
+        purchasedMedicines.emplace_back(medicineID, quantity);
+
+        cout << "Do you want to add more medications? (1 for Yes, 0 for No): ";
+        int choice;
+        cin >> choice;
+        if (choice == 0) {
+            break;
+        }
+    }
+
+    saveMedicinesToFile();
+
+    ofstream outFile("invoices.txt", ios::app);
+    outFile << prescriptionID << "," << patientID;
+    for (const auto& med : purchasedMedicines) {
+        auto it = find_if(inventory.begin(), inventory.end(), [&med](const Medicine& m) {
+            return m.id == med.first;
+        });
+        if (it != inventory.end()) {
+            double amount = med.second * it->price;
+            outFile << "," << it->id << "," << med.second << "," << it->price << "," << amount;
+        }
+    }
+    outFile << "," << totalAmount << endl;
+    outFile.close();
+
+    // Generate Invoice
+    cout << "\nPrescription ID: " << prescriptionID << "\n";
+    cout << "Patient ID: " << patientID << "\n";
+    cout << left << setw(15) << "MedicationID"
+         << setw(10) << "Quantity"
+         << setw(15) << "PricePerTab"
+         << setw(10) << "Amount" << endl;
+    cout << string(50, '-') << endl;
+
+    for (const auto& med : purchasedMedicines)
+    {
+        auto it = find_if(inventory.begin(), inventory.end(), [&med](const Medicine& m)
+        {
+            return m.id == med.first;
+        });
+
+        if (it != inventory.end())
+        {
+            double amount = med.second * it->price;
+            cout << left << setw(15) << it->id
+                 << setw(10) << med.second
+                 << setw(15) << it->price
+                 << setw(10) << amount << endl;
+        }
+    }
+
+    cout << string(50, '-') << endl;
+    cout << right << setw(40) << "Total Amount: " << totalAmount << "\n";
+    cout << "THANK YOU. VISIT AGAIN!\n";
+}
+
+
+void displayAllInvoices() {
+    ifstream inFile(INVOICE_FILE);
+    if (!inFile.is_open()) {
+        cout << "Error: Unable to open invoices.txt.\n";
+        return;
+    }
+
+    cout << left << setw(20) << "Prescription ID"
+         << setw(20) << "Patient ID"
+         << setw(15) << "Total Amount" << endl;
+    cout << string(55, '-') << endl;
+
+    string line;
+    double grandTotal = 0;
+
+    while (getline(inFile, line)) {
+        stringstream ss(line);
+        string prescriptionID, patientID, token;
+        double totalAmount = 0;
+
+        // Extract Prescription ID
+        getline(ss, prescriptionID, ',');
+
+        // Extract Patient ID
+        getline(ss, patientID, ',');
+
+        // Extract Total Amount (last token)
+        string lastToken;
+        while (getline(ss, token, ',')) {
+            lastToken = token;
+        }
+
+        try {
+            totalAmount = stod(lastToken); // Convert the last token to double
+            cout << left << setw(20) << prescriptionID
+                 << setw(20) << patientID
+                 << setw(15) << totalAmount << endl;
+            grandTotal += totalAmount;
+        } catch (const invalid_argument&) {
+            cout << "Warning: Invalid data format in line: " << line << endl;
+        }
+    }
+
+    inFile.close();
+
+    cout << string(55, '-') << endl;
+    cout << right << setw(40) << "Grand Total: " << grandTotal << endl;
+}
+
+
+void showInvoiceSummary() {
+    ifstream inFile(INVOICE_FILE);
+    if (!inFile.is_open()) {
+        cout << "Error: Unable to open invoices.txt.\n";
+        return;
+    }
+
+    map<string, double> invoiceSummary; // Map to store prescription ID and total amount
+    string line;
+
+    // Read each line from the file
+    while (getline(inFile, line)) {
+        stringstream ss(line);
+        string prescriptionID, patientID, token;
+        double totalAmount = 0;
+
+        // Read Prescription ID and Patient ID
+        getline(ss, prescriptionID, ',');
+        getline(ss, patientID, ',');
+
+        // Parse the rest of the line to extract the total amount
+        string lastToken;
+        while (getline(ss, token, ',')) {
+            lastToken = token; // Keep updating the last token
+        }
+
+        // Convert the last token to totalAmount
+        try {
+            totalAmount = stod(lastToken);
+            invoiceSummary[prescriptionID] = totalAmount;
+        } catch (const invalid_argument&) {
+            cout << "Warning: Invalid data format in line: " << line << endl;
+            continue;
+        }
+    }
+
+    inFile.close();
+
+    // Display the summary in a tabular format
+    cout << left << setw(20) << "Prescription ID"
+         << setw(20) << "Patient ID"
+         << setw(15) << "Total Amount" << endl;
+    cout << string(55, '-') << endl;
+
+    double grandTotal = 0;
+    for (const auto& entry : invoiceSummary) {
+        cout << left << setw(20) << entry.first
+             << setw(20) << "Unknown" // Placeholder as patient ID is not in the map
+             << setw(15) << entry.second << endl;
+        grandTotal += entry.second;
+    }
+
+    cout << string(55, '-') << endl;
+    cout << right << setw(40) << "Grand Total: " << grandTotal << endl;
+}
+
+
+void deleteInvoiceByPrescriptionID()
+{
+    string prescriptionID;
+    cout << "Enter the Prescription ID to delete: ";
+    cin >> prescriptionID;
+
+    ifstream inFile("invoices.txt");
+    if (!inFile.is_open())
+    {
+        cout << "Error: Unable to open invoices.txt.\n";
+        return;
+    }
+
+    vector<string> remainingInvoices; // To store lines that are not deleted
+    bool found = false;
+    string line;
+
+    // Read each line from the file
+    while (getline(inFile, line))
+    {
+        stringstream ss(line);
+        string currentPrescriptionID;
+        getline(ss, currentPrescriptionID, ',');
+
+        // Check if the current line matches the prescription ID
+        if (currentPrescriptionID == prescriptionID)
+        {
+            found = true; // Mark as found and skip adding this line to the remaining invoices
+        }
+        else
+        {
+            remainingInvoices.push_back(line); // Keep this line
+        }
+    }
+    inFile.close();
+
+    if (!found)
+    {
+        cout << "Prescription ID " << prescriptionID << " not found.\n";
+        return;
+    }
+
+    // Write the remaining invoices back to the file
+    ofstream outFile("invoices.txt");
+    if (!outFile.is_open())
+    {
+        cout << "Error: Unable to write to invoices.txt.\n";
+        return;
+    }
+
+    for (const auto& invoice : remainingInvoices)
+    {
+        outFile << invoice << endl;
+    }
+    outFile.close();
+
+    cout << "Invoice with Prescription ID " << prescriptionID << " deleted successfully.\n";
+}
+
+
+void deleteAllMedicines()
+{
+    char confirmation;
+    cout << "Are you sure you want to delete all medicines in stock? : ";
+    cin >> confirmation;
+
+    if (tolower(confirmation) == 'y')
+    {
+        // Clear the inventory and medicine IDs
+        inventory.clear();
+        medicineIds.clear();
+
+        // Update the file to reflect the empty stock
+        ofstream file(MED_FILE, ios::trunc);
+        if (file.is_open())
+        {
+            file.close();
+        }
+        else
+        {
+            cout << "Error: Could not open the medicines file to clear data.\n";
+        }
+
+        cout << "All medicines have been deleted successfully.\n";
+    }
+    else
+    {
+        cout << "Operation canceled. Medicines were not deleted.\n";
+    }
+}
+
+void deleteMedicineById()
+{
+    string medicineId;
+    cout << "Enter the Medicine ID to delete: ";
+    cin >> medicineId;
+
+    // Search for the medicine by ID
+    auto it = find_if(inventory.begin(), inventory.end(), [&medicineId](const Medicine& med)
+ {
+        return med.id == medicineId;
+    });
+
+    if (it != inventory.end())
+    {
+        // Remove the medicine from the inventory
+        inventory.erase(it);
+        medicineIds.erase(medicineId); // Remove ID from the set
+        saveMedicinesToFile(); // Update the file
+        cout << "Medicine with ID " << medicineId << " has been successfully deleted.\n";
+    }
+    else
+    {
+        cout << "Medicine with ID " << medicineId << " not found.\n";
+    }
+}
+
+void showInvoiceDetailsByPrescriptionID()
+{
+    string prescriptionID;
+    cout << "Enter Prescription ID: ";
+    cin >> prescriptionID;
+
+    ifstream inFile("invoices.txt");
+    if (!inFile.is_open())
+    {
+        cout << "Error: Unable to open invoices.txt.\n";
+        return;
+    }
+
+    string line;
+    bool found = false;
+
+    while (getline(inFile, line))
+    {
+        stringstream ss(line);
+        string id, patientID, medicineID, quantityStr, priceStr, amountStr;
+        double totalAmount = 0.0; // Variable to calculate total amount
+
+        getline(ss, id, ',');
+
+        if (id == prescriptionID)
+        {
+            found = true;
+
+            // Display header
+            cout << "\nPrescription ID: " << id << "\n";
+
+            // Extract patient ID
+            getline(ss, patientID, ',');
+            cout << "Patient ID: " << patientID << "\n";
+
+            // Display medicines purchased
+            cout << left << setw(15) << "Medicine ID"
+                 << setw(10) << "Quantity"
+                 << setw(15) << "Price Per Unit"
+                 << setw(10) << "Amount" << endl;
+            cout << string(50, '-') << endl;
+
+            while (getline(ss, medicineID, ','))
+            {
+                getline(ss, quantityStr, ',');
+                getline(ss, priceStr, ',');
+                getline(ss, amountStr, ',');
+
+                double amount = stod(amountStr);
+                totalAmount += amount; // Add to total amount
+
+                cout << left << setw(15) << medicineID
+                     << setw(10) << quantityStr
+                     << setw(15) << priceStr
+                     << setw(10) << amountStr << endl;
+            }
+
+            // Display total amount
+            cout << string(50, '-') << endl;
+            cout << right << setw(40) << "Total Amount: " << totalAmount << "\n";
+
+            break;
+        }
+    }
+
+    inFile.close();
+
+    if (!found)
+    {
+        cout << "No invoice found for Prescription ID " << prescriptionID << ".\n";
+    }
+}
+
+void pharmacyManagementMenu()
+{
+    int choice;
+    do
+    {
+        clearScreen();
+        cout << "\n--- Pharmacy Management Page ---\n";
+        cout << "1. Add Medicine\n";
+        cout << "2. Display Medicines\n";
+        cout << "3. Search Medicine \n";
+        cout << "4. Generate Invoice\n";
+        cout << "5. Display All Invoices\n";
+        cout << "6. Show Invoice Summary\n";
+        cout << "7. Delete Invoice by Prescription ID\n";
+        cout << "8. Clear Stock\n";
+        cout << "9. Delete Medicine using ID\n";
+        cout << "10. Show Invoice Details by Prescription ID\n";
+        cout << "11. Exit Pharmacy Management\n";
+        cout << "Enter your choice: ";
+        cin >> choice;
+
+        clearScreen();
+
+        switch (choice)
+         {
+            case 1: addMedicine(); break;
+            case 2: displayMedicines(); break;
+            case 3: searchMedicineById(); break;
+            case 4: generateInvoice(); break;
+            case 5: displayAllInvoices(); break;
+            case 6: showInvoiceSummary(); break;
+            case 7: deleteInvoiceByPrescriptionID(); break;
+            case 8: deleteAllMedicines(); break;
+            case 9: deleteMedicineById(); break;
+            case 10: showInvoiceDetailsByPrescriptionID(); break;
+            case 11: cout << "Exiting Pharmacy Management...\n"; break;
+            default: cout << "Invalid choice.\n";
+        }
+         if (choice != 11)
+         {
+            waitForKeyPress(); // Wait for the user to press a key after each operation
+         }
+    }
+    while (choice != 11);
+}
+
+void patientRegistrationMenu()
+{
+    int choice;
+    do
+    {
+        clearScreen();
+        cout << "\n--- Patient Registration Page ---\n";
+        cout << "1. Register Patient\n";
+        cout << "2. View Patients\n";
+        cout << "3. Display Emergency Patients.\n";
+        cout << "4. Attend to a Patient\n";
+        cout << "5. Check Next Patient\n";
+        cout << "6. Search Patient by ID\n";
+        cout << "7. Delete Patient by ID\n";
+        cout << "8. View Treated Patients\n";
+        cout << "9. View Patients by Department\n";
+        cout << "10. Clear Patients data\n";
+        cout << "11. Exit Patient Registration\n";
+        cout << "Enter your choice: ";
+        cin >> choice;
+
+        clearScreen();
+
+        switch (choice)
+        {
+            case 1: registerPatient(); break;
+            case 2: viewPatients(); break;
+            case 3: displayPatientsByPriority(); break;
+            case 4: attendToPatient(); break;
+            case 5: checkNextPatient(); break;
+            case 6: searchPatientById(); break;
+            case 7: deletePatientById(); break;
+            case 8: viewTreatedPatients(); break;
+            case 9: viewPatientsByDepartment(); break;
+            case 10 :clearPatientData(); break;
+            case 11:cout << "Exiting Patient Registration...\n"; break;
+            default: cout << "Invalid choice.\n";
+        }
+        if (choice != 11)
+         {
+            waitForKeyPress(); // Wait for the user to press a key after each operation
+         }
+    }
+     while (choice !=11 );
+}
+
+void PatientManagementMenu()
+{
+    int choice;
+    do
+    {
+
+        cout << "1. View Patients\n";
+        cout << "2. Edit Patient Record\n";
+        cout << "3. Search Patient by Name\n";
+        cout << "4. Search Patient by ID\n";
+        cout << "5. Search Patients by Ailment\n";
+        cout << "6. Exit Patient Registration\n";
+        cout << "Enter your choice: ";
+        cin >> choice;
+
+        clearScreen();
+
+    switch(choice)
+    {
+
+        case 1:
+            viewPatients();
+            break;
+        case 2:
+            editPatientRecord();
+            break;
+        case 3:
+            searchPatientByName();
+            break;
+        case 4:
+            searchPatientByID();
+            break;
+        case 5:
+            searchPatientsByAilment();
+            break;
+        case 6:cout << "Exiting Patient Registration...\n";
+            break;
+            default: cout << "Invalid choice.\n";
+        }
+        if (choice != 6)
+         {
+            waitForKeyPress(); // Wait for the user to press a key after each operation
+         }
+
+    }
+     while (choice !=6 );
+
+}
+
+
+void displayMenu();
+void displayAvailableSlots(const vector<int>& slots);
+void bookAppointment(vector<int>& slots);
+void viewAppointments(const vector<int>& slots);
+void cancelAppointment(vector<int>& slots);
+void readAppointments(vector<int>& slots);
+void saveAppointments(const vector<int>& slots);
+void displayAppointmentSummary(const vector<int>& slots);
+void displayDetailedAppointmentSummary(const vector<int>& slots);
+void modifyAppointment(vector<int>& slots);
+void reminderNotification(const vector<int>& slots);
+void updateAppointment(vector<int>& slots);
+void searchAppointmentByName();
+void exportAppointmentsToCSV();
+void importAppointmentsFromCSV(vector<int>& slots);
+void generateMonthlyReport(const vector<int>& slots);
+void generateYearlyReport(const vector<int>& slots);
+void displayDoctorAvailability();
+void changeDoctorAvailability();
+void sendEmailReminder();
+void sendSMSReminder();
+void viewPatientHistory();
+void updatePatientInformation();
+void handleEmergencyAppointment(vector<int>& slots);
+void viewEmergencyAppointments();
+void generateWeeklyReport(const vector<int>& slots);
+void scheduleFollowUpAppointment(vector<int>& slots);
+void viewFollowUpAppointments();
+void generateDailyReport(const vector<int>& slots);
+//void clearScreen();
+
+// Global variables
+string currentUser;
+
+
+int appointments(int argc, char** argv)
+{
+    vector<int> slots(13, 0);
+    // Initialize slots for 9 AM to 9 PM (13 slots)
+
+    // Read existing appointments from file
+    readAppointments(slots);
+
+    while (true)
+    {
+        clearScreen();
+        displayMenu();
+        int choice;
+
+        cout << "\n Enter your choice: ";
+        cin >> choice;
+
+        switch (choice)
+        {
+            case 1:
+                bookAppointment(slots);
+                break;
+            case 2:
+                viewAppointments(slots);
+                break;
+            case 3:
+                cancelAppointment(slots);
+                break;
+            case 4:
+                displayAppointmentSummary(slots);
+                break;
+            case 5:
+                displayDetailedAppointmentSummary(slots);
+                break;
+            case 6:
+                modifyAppointment(slots);
+                break;
+            case 7:
+                reminderNotification(slots);
+                break;
+            case 8:
+                updateAppointment(slots);
+                break;
+            case 9:
+                searchAppointmentByName();
+                break;
+            case 10:
+                exportAppointmentsToCSV();
+                break;
+            case 11:
+                importAppointmentsFromCSV(slots);
+                break;
+            case 12:
+                generateMonthlyReport(slots);
+                break;
+            case 13:
+                generateYearlyReport(slots);
+                break;
+            case 14:
+                displayDoctorAvailability();
+                break;
+            case 15:
+                changeDoctorAvailability();
+                break;
+            case 16:
+                sendEmailReminder();
+                break;
+            case 17:
+                sendSMSReminder();
+                break;
+            case 18:
+                viewPatientHistory();
+                break;
+            case 19:
+                updatePatientInformation();
+                break;
+            case 20:
+                handleEmergencyAppointment(slots);
+                break;
+            case 21:
+                viewEmergencyAppointments();
+                break;
+            case 22:
+                generateWeeklyReport(slots);
+                break;
+            case 23:
+                scheduleFollowUpAppointment(slots);
+                break;
+            case 24:
+                viewFollowUpAppointments();
+                break;
+            case 25:
+                generateDailyReport(slots);
+                break;
+            case 0:
+                // Save appointments to file before exiting
+                saveAppointments(slots);
+                cout << "\n Exiting the system...\n";
+                return 0;
+            default:
+                cout << "\n Invalid choice. Please enter again.";
+                getchar(); // Pause the screen
+        }
+    }
+
+    return 0;
+}
+
+// Function to display the main menu
+// Function to clear the screen
+/*void clearScreen() {
+#ifdef _WIN32
+    system("cls");
+#else
+    system("clear");
+#endif
+}*/
+void displayMenu()
+{
+    cout << "\t\t\tDoctor Appointment System\n";
+    cout << "----------------------------------------\n\n";
+    cout << "1. Book Appointment\n";
+    cout << "2. View Appointments\n";
+    cout << "3. Cancel Appointment\n";
+    cout << "4. Display Appointment Summary\n";
+    cout << "5. Display Detailed Appointment Summary\n";
+    cout << "6. Modify Appointment\n";
+    cout << "7. Set Reminder Notification\n";
+    cout << "8. Update Appointment\n";
+    cout << "9. Search Appointment by Name\n";
+    cout << "10. Export Appointments to CSV\n";
+    cout << "11. Import Appointments from CSV\n";
+    cout << "12. Generate Monthly Report\n";
+    cout << "13. Reschedule Appointment\n";
+    cout << "14. Daily Summary Report\n";
+    cout << "0. Exit\n";
+}
+
+// Function to display available slots
+void displayAvailableSlots(const vector<int>& slots)
+ {
+    char key = 'A';
+    int hours = 9;
+    for (int i = 0; i < slots.size(); ++i)
+    {
+        if (slots[i] == 0)
+            {
+            cout << "\n " << key << " -> " << (hours < 10 ? "0" : "") << hours << " - Available";
+        }
+        else
+            {
+            cout << "\n " << key << " -> " << (hours < 10 ? "0" : "") << hours << " - Booked";
+        }
+        hours++;
+        key++;
+    }
+}
+
+// Function to book an appointment
+void bookAppointment(vector<int>& slots)
+{
+    system("cls");
+    cout << "\n ----- Book Your Appointment ---- \n";
+    cout << "\n ----- Available slots ---- \n";
+
+    displayAvailableSlots(slots);
+
+    char choice;
+    cout << "\n\n Input your choice: ";
+    cin >> choice;
+
+    if (!(choice >= 'A' && choice <= 'Z'))
+     {
+        cout << "\n Error: Invalid Selection";
+        cout << "\n Please select a correct value from the menu A-Z";
+        cout << "\n Press any key to continue";
+        getchar(); getchar();
+        system("cls");
+        bookAppointment(slots);
+        return;
+    }
+
+    int index = (choice - 65);
+    if (slots[index] == 1)
+     {
+        cout << "\n Error: Appointment is already booked for this hour";
+        cout << "\n Please select a different time.";
+        cout << "\n Press any key to continue.";
+        getchar(); getchar();
+        system("cls");
+        bookAppointment(slots);
+        return;
+    }
+
+    string name, contact, reason;
+
+    cout << "\n Enter your first name: ";
+    cin >> name;
+    cout << "\n Enter your contact number: ";
+    cin >> contact;
+    cout << "\n Enter the reason for appointment: ";
+
+    cin.ignore();
+
+    getline(cin, reason);
+
+    ofstream out("appointment.dat", ios::app);
+    if (out)
+        {
+        out << choice << ":" << currentUser << ":" << contact << ":" << reason << "\n";
+        out.close();
+        slots[index] = 1;
+         // Mark slot as booked
+        cout << "\n Appointment booked for " << (choice - 65) + 9 << " successfully!";
+    }
+    else
+        {
+        cout << "\n Error while saving booking.";
+    }
+
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to view all appointments
+// Function to view all appointments
+void viewAppointments(const vector<int>& slots)
+{
+    system("cls");
+    cout << "\n ----- Appointments Summary ---- \n";
+
+    // Display available slots and their status
+    cout << "\n ----- Slot Details ---- \n";
+    for (size_t i = 0; i < slots.size(); ++i)
+        {
+        char slotLetter = 'A' + i;
+        cout << slotLetter << " - " << ((slots[i] == 1) ? "Booked" : "Available") << "\n";
+    }
+
+    // Read booked appointments from file
+    ifstream in("appointment.dat");
+    if (!in) {
+        cout << "\n Error: Unable to open appointment file.";
+    } else {
+        string line;
+        cout << "\n ----- Booked Appointments ---- \n";
+        while (getline(in, line))
+            {
+            // Assuming the format: choice:currentUser:contact:reason
+            size_t pos = 0;
+            vector<string> details;
+
+            while ((pos = line.find(':')) != string::npos)
+                {
+                details.push_back(line.substr(0, pos));
+                line.erase(0, pos + 1);
+            }
+            details.push_back(line); // Add the last part
+
+            if (details.size() == 4) {
+                cout << "Slot: " << details[0]
+                     << ", Name: " << details[1]
+                     << ", Contact: " << details[2]
+                     << ", Reason: " << details[3] << "\n";
+            }
+        }
+        in.close();
+    }
+
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to cancel an appointment
+void cancelAppointment(vector<int>& slots)
+{
+    system("cls");
+    cout << "\n ----- Cancel Your Appointment ---- \n";
+    cout << "\n ----- Booked slots ---- \n";
+
+    // Display only booked slots
+    char key = 'A';
+    int hours = 9;
+    for (int i = 0; i < slots.size(); ++i)
+    {
+        if (slots[i] == 1)
+            {
+            cout << "\n " << key << " -> " << (hours < 10 ? "0" : "") << hours << " - Booked";
+        }
+        hours++;
+        key++;
+    }
+
+    char choice;
+    cout << "\n\n Input your choice to cancel: ";
+    cin >> choice;
+
+    if (!(choice >= 'A' && choice <= 'Z'))
+     {
+        cout << "\n Error: Invalid Selection";
+        cout << "\n Please select a correct value from the menu A-Z";
+        cout << "\n Press any key to continue";
+        getchar(); getchar();
+
+        system("cls");
+        cancelAppointment(slots);
+        return;
+    }
+
+    int index = (choice - 65);
+
+    if (slots[index] == 0)
+    {
+        cout << "\n Error: No appointment booked for this hour.";
+        cout << "\n Press any key to continue.";
+        getchar(); getchar();
+        system("cls");
+        cancelAppointment(slots);
+        return;
+    }
+
+    // Cancel the appointment
+    ifstream in("appointment.dat");
+    ofstream temp("temp.dat");
+    string line;
+    while (getline(in, line))
+     {
+        if (line[0] != choice)
+        {
+            temp << line << "\n";
+        }
+    }
+    in.close();
+    temp.close();
+
+    remove("appointment.dat");
+    rename("temp.dat", "appointment.dat");
+
+    slots[index] = 0; // Mark slot as available
+    cout << "\n Appointment canceled successfully!";
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to read appointments from file
+void readAppointments(vector<int>& slots)
+ {
+    ifstream read("appointment.dat");
+
+    if (read)
+        {
+        string line;
+        while (getline(read, line))
+         {
+            char temp = line[0];
+            int index = (temp - 65);
+            slots[index] = 1;
+        }
+
+        read.close();
+    }
+}
+
+// Function to save appointments to file
+void saveAppointments(const vector<int>& slots)
+ {
+    ofstream out("appointment.dat");
+    if (out) {
+        char key = 'A';
+        for (int i = 0; i < slots.size(); ++i)
+         {
+            if (slots[i] == 1)
+            {
+                out << key << ":Booked\n";
+            }
+            key++;
+        }
+
+        out.close();
+    }
+}
+
+// Function to display a summary of appointments
+void displayAppointmentSummary(const vector<int>& slots)
+ {
+    system("cls");
+    cout << "\n ----- Appointment Summary ---- \n";
+    displayAvailableSlots(slots);
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to display detailed appointment summary
+void displayDetailedAppointmentSummary(const vector<int>& slots)
+ {
+    system("cls");
+    cout << "\n ----- Detailed Appointment Summary ---- \n";
+    ifstream read("appointment.dat");
+    if (read)
+     {
+        string line;
+        while (getline(read, line))
+        {
+            cout << line << "\n";
+        }
+        read.close();
+    } else {
+        cout << "\n No appointments found.";
+    }
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to modify an appointment
+void modifyAppointment(vector<int>& slots)
+ {
+    system("cls");
+
+    cout << "\n ----- Modify Your Appointment ---- \n";
+    cout << "\n ----- Booked slots ---- \n";
+
+    // Display only booked slots
+    char key = 'A';
+    int hours = 9;
+    for (int i = 0; i < slots.size(); ++i)
+     {
+        if (slots[i] == 1) {
+            cout << "\n " << key << " -> " << (hours < 10 ? "0" : "") << hours << " - Booked";
+        }
+        hours++;
+        key++;
+    }
+
+    char choice;
+    cout << "\n\n Input your choice to modify: ";
+    cin >> choice;
+
+    if (!(choice >= 'A' && choice <= 'Z'))
+    {
+        cout << "\n Error: Invalid Selection";
+        cout << "\n Please select a correct value from the menu A-Z";
+        cout << "\n Press any key to continue";
+        getchar(); getchar();
+        system("cls");
+        modifyAppointment(slots);
+        return;
+    }
+
+    int index = (choice - 65);
+    if (slots[index] == 0)
+    {
+        cout << "\n Error: No appointment booked for this hour.";
+        cout << "\n Press any key to continue.";
+        getchar(); getchar();
+        system("cls");
+        modifyAppointment(slots);
+        return;
+    }
+
+    // Cancel the current appointment
+    ifstream in("appointment.dat");
+    ofstream temp("temp.dat");
+    string line;
+    while (getline(in, line))
+     {
+        if (line[0] != choice)
+        {
+            temp << line << "\n";
+        }
+    }
+    in.close();
+    temp.close();
+
+    remove("appointment.dat");
+    rename("temp.dat", "appointment.dat");
+
+    slots[index] = 0; // Mark slot as available
+
+    // Book a new appointment
+    bookAppointment(slots);
+}
+
+// Function to set a reminder notification
+void reminderNotification(const vector<int>& slots)
+{
+    system("cls");
+    cout << "\n ----- Set Reminder Notification ---- \n";
+    cout << "\n ----- Booked slots ---- \n";
+
+    // Display only booked slots
+    char key = 'A';
+    int hours = 9;
+    for (int i = 0; i < slots.size(); ++i)
+    {
+        if (slots[i] == 1) {
+            cout << "\n " << key << " -> " << (hours < 10 ? "0" : "") << hours << " - Booked";
+        }
+        hours++;
+        key++;
+    }
+
+    char choice;
+    cout << "\n\n Input your choice to set a reminder: ";
+    cin >> choice;
+
+    if (!(choice >= 'A' && choice <= 'Z'))
+    {
+        cout << "\n Error: Invalid Selection";
+        cout << "\n Please select a correct value from the menu A-Z";
+        cout << "\n Press any key to continue";
+        getchar(); getchar();
+        system("cls");
+        reminderNotification(slots);
+        return;
+    }
+
+    int index = (choice - 65);
+    if (slots[index] == 0)
+    {
+        cout << "\n Error: No appointment booked for this hour.";
+        cout << "\n Press any key to continue.";
+        getchar(); getchar();
+        system("cls");
+        reminderNotification(slots);
+        return;
+    }
+
+    // Set reminder for the appointment
+    cout << "\n Reminder set for appointment at " << (choice - 65) + 9 << "!";
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to update an appointment
+void updateAppointment(vector<int>& slots)
+ {
+    system("cls");
+    cout << "\n ----- Update Your Appointment ---- \n";
+    cout << "\n ----- Booked slots ---- \n";
+
+    // Display only booked slots
+    char key = 'A';
+    int hours = 9;
+    for (int i = 0; i < slots.size(); ++i)
+    {
+        if (slots[i] == 1) {
+            cout << "\n " << key << " -> " << (hours < 10 ? "0" : "") << hours << " - Booked";
+        }
+        hours++;
+        key++;
+    }
+
+    char choice;
+    cout << "\n\n Input your choice to update: ";
+    cin >> choice;
+
+    if (!(choice >= 'A' && choice <= 'Z'))
+     {
+        cout << "\n Error: Invalid Selection";
+        cout << "\n Please select a correct value from the menu A-Z";
+        cout << "\n Press any key to continue";
+        getchar(); getchar();
+        system("cls");
+        updateAppointment(slots);
+        return;
+    }
+
+    int index = (choice - 65);
+    if (slots[index] == 0)
+    {
+        cout << "\n Error: No appointment booked for this hour.";
+        cout << "\n Press any key to continue.";
+        getchar(); getchar();
+        system("cls");
+        updateAppointment(slots);
+        return;
+    }
+
+    // Update the appointment
+    ifstream in("appointment.dat");
+    ofstream temp("temp.dat");
+    string line;
+    string name, contact, reason;
+    while (getline(in, line))
+    {
+        if (line[0] == choice)
+         {
+            cout << "\n Updating appointment at " << (choice - 65) + 9 << "!";
+            cout << "\n Enter your first name: ";
+            cin >> name;
+            cout << "\n Enter your contact number: ";
+            cin >> contact;
+            cout << "\n Enter the reason for appointment: ";
+            cin.ignore();
+            getline(cin, reason);
+            temp << choice << ":" << name << ":" << contact << ":" << reason << "\n";
+        } else
+        {
+            temp << line << "\n";
+        }
+    }
+    in.close();
+    temp.close();
+
+    remove("appointment.dat");
+    rename("temp.dat", "appointment.dat");
+
+    cout << "\n Appointment updated successfully!";
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to search for an appointment by name
+void searchAppointmentByName()
+{
+    system("cls");
+    cout << "\n ----- Search for Appointment by Name ---- \n";
+    ifstream read("appointment.dat");
+
+    if (read)
+     {
+        string line, name;
+        cout << "\n Enter the name to search: ";
+        cin >> name;
+        bool found = false;
+        while (getline(read, line))
+         {
+            if (line.find(name) != string::npos)
+            {
+                cout << line << "\n";
+                found = true;
+            }
+        }
+        if (!found) {
+            cout << "\n No appointments found for the name " << name << ".";
+        }
+
+        read.close();
+    } else
+     {
+        cout << "\n No appointments found.";
+    }
+
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to export appointments to a CSV file
+void exportAppointmentsToCSV()
+ {
+    system("cls");
+    cout << "\n ----- Export Appointments to CSV ---- \n";
+
+    ifstream read("appointment.dat");
+    ofstream out("appointments.csv");
+
+    if (read && out)
+    {
+        string line;
+        out << "Slot,Name,Contact,Reason\n";
+
+        while (getline(read, line))
+        {
+            replace(line.begin(), line.end(), ':', ',');
+            out << line << "\n";
+        }
+        read.close();
+        out.close();
+
+        cout << "\n Appointments exported to appointments.csv successfully!";
+    } else {
+        cout << "\n Error exporting appointments.";
+    }
+
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to import appointments from a CSV file
+void importAppointmentsFromCSV(vector<int>& slots)
+{
+    system("cls");
+    cout << "\n ----- Import Appointments from CSV ---- \n";
+    ifstream in("appointments.csv");
+    ofstream out("appointment.dat");
+
+    if (in && out)
+     {
+        string line;
+        getline(in, line); // Skip header
+
+        while (getline(in, line))
+        {
+            replace(line.begin(), line.end(), ',', ':');
+            out << line << "\n";
+            char temp = line[0];
+            int index = (temp - 65);
+            slots[index] = 1;
+        }
+
+        in.close();
+        out.close();
+        cout << "\n Appointments imported from appointments.csv successfully!";
+    } else {
+        cout << "\n Error importing appointments.";
+    }
+
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+// Function to generate a monthly report of appointments
+void generateMonthlyReport(const vector<int>& slots)
+{
+    system("cls");
+    cout << "\n ----- Generate Monthly Report of Appointments ---- \n";
+    ifstream read("appointment.dat");
+    if (read)
+    {
+        string line;
+        int totalAppointments = 0;
+        int weeklyAppointments[4] = {0, 0, 0, 0}; // Assume 4 weeks in a month
+        while (getline(read, line))
+        {
+            totalAppointments++;
+            int week = (totalAppointments - 1) / 7; // Assuming each week has 7 days
+            if (week < 4)
+            {
+                weeklyAppointments[week]++;
+            }
+        }
+        read.close();
+        cout << "\n Total appointments this month: " << totalAppointments;
+        for (int i = 0; i < 4; i++)
+        {
+            cout << "\n Week " << (i + 1) << ": " << weeklyAppointments[i] << " appointments";
+        }
+    }
+    else
+    {
+        cout << "\n No appointments found.";
+    }
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to generate a yearly report of appointments
+void generateYearlyReport(const vector<int>& slots)
+{
+    system("cls");
+    cout << "\n ----- Generate Yearly Report of Appointments ---- \n";
+    ifstream read("appointment.dat");
+    if (read)
+    {
+        string line;
+        int totalAppointments = 0;
+        int monthlyAppointments[12] = {0}; // 12 months in a year
+        while (getline(read, line))
+        {
+            totalAppointments++;
+            int month = (totalAppointments - 1) / 30; // Assuming each month has 30 days
+            if (month < 12)
+            {
+                monthlyAppointments[month]++;
+            }
+        }
+        read.close();
+        cout << "\n Total appointments this year: " << totalAppointments;
+        for (int i = 0; i < 12; i++)
+        {
+            cout << "\n Month " << (i + 1) << ": " << monthlyAppointments[i] << " appointments";
+        }
+    }
+    else
+    {
+        cout << "\n No appointments found.";
+    }
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to display doctor availability
+void displayDoctorAvailability()
+{
+    system("cls");
+    cout << "\n ----- Doctor Availability ---- \n";
+    cout << "\n Monday to Friday: 9 AM to 5 PM";
+    cout << "\n Saturday: 9 AM to 1 PM";
+    cout << "\n Sunday: Closed";
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to change doctor's availability
+void changeDoctorAvailability()
+{
+    system("cls");
+    cout << "\n ----- Change Doctor Availability ---- \n";
+    string days[7] = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"};
+    string availability[7];
+    for (int i = 0; i < 7; i++)
+    {
+        cout << "\n Enter availability for " << days[i] << " (e.g., 9 AM - 5 PM or Closed): ";
+        getline(cin, availability[i]);
+    }
+    ofstream out("availability.dat");
+    if (out)
+    {
+        for (int i = 0; i < 7; i++)
+        {
+            out << days[i] << ": " << availability[i] << "\n";
+        }
+        out.close();
+        cout << "\n Doctor availability updated successfully!";
+    }
+    else
+    {
+        cout << "\n Error updating doctor availability.";
+    }
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to send appointment reminders via email (placeholder)
+void sendEmailReminder()
+{
+    system("cls");
+    cout << "\n ----- Send Email Reminder ---- \n";
+    cout << "\n This feature is currently under development.";
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to send appointment reminders via SMS (placeholder)
+void sendSMSReminder()
+{
+    system("cls");
+    cout << "\n ----- Send SMS Reminder ---- \n";
+    cout << "\n This feature is currently under development.";
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to view patient history
+void viewPatientHistory()
+{
+    system("cls");
+    cout << "\n ----- View Patient History ---- \n";
+    ifstream read("patient_history.dat");
+    if (read)
+    {
+        string line;
+        while (getline(read, line))
+        {
+            cout << line << "\n";
+        }
+        read.close();
+    }
+    else
+    {
+        cout << "\n No patient history found.";
+    }
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to update patient information
+void updatePatientInformation()
+{
+    system("cls");
+    cout << "\n ----- Update Patient Information ---- \n";
+    string name, contact, address;
+    cout << "\n Enter patient's name: ";
+    cin >> name;
+    cout << "\n Enter new contact number: ";
+    cin >> contact;
+    cout << "\n Enter new address: ";
+    cin.ignore();
+    getline(cin, address);
+    ofstream out("patient_history.dat", ios::app);
+    if (out)
+    {
+        out << "Name: " << name << "\n";
+        out << "Contact: " << contact << "\n";
+        out << "Address: " << address << "\n";
+        out.close();
+        cout << "\n Patient information updated successfully!";
+    }
+    else
+    {
+        cout << "\n Error updating patient information.";
+    }
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to handle emergency appointments
+void handleEmergencyAppointment(vector<int>& slots)
+{
+    system("cls");
+    cout << "\n ----- Handle Emergency Appointment ---- \n";
+    string name, contact, reason;
+    cout << "\n Enter patient's name: ";
+    cin >> name;
+    cout << "\n Enter contact number: ";
+    cin >> contact;
+    cout << "\n Enter reason for emergency appointment: ";
+    cin.ignore();
+    getline(cin, reason);
+    ofstream out("emergency_appointments.dat", ios::app);
+    if (out)
+    {
+        out << "Name: " << name << "\n";
+        out << "Contact: " << contact << "\n";
+        out << "Reason: " << reason << "\n";
+        out.close();
+        cout << "\n Emergency appointment recorded successfully!";
+    }
+    else
+    {
+        cout << "\n Error recording emergency appointment.";
+    }
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to view emergency appointments
+void viewEmergencyAppointments()
+{
+    system("cls");
+    cout << "\n ----- View Emergency Appointments ---- \n";
+    ifstream read("emergency_appointments.dat");
+    if (read)
+    {
+        string line;
+        while (getline(read, line))
+        {
+            cout << line << "\n";
+        }
+        read.close();
+    }
+    else
+    {
+        cout << "\n No emergency appointments found.";
+    }
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to generate a weekly report of appointments
+void generateWeeklyReport(const vector<int>& slots)
+{
+    system("cls");
+    cout << "\n ----- Generate Weekly Report of Appointments ---- \n";
+    ifstream read("appointment.dat");
+    if (read)
+    {
+        string line;
+        int totalAppointments = 0;
+        int dailyAppointments[7] = {0};
+        // 7 days in a week
+        while (getline(read, line))
+        {
+            totalAppointments++;
+            int day = (totalAppointments - 1) % 7;
+             // Assuming each week starts from day 1
+            dailyAppointments[day]++;
+        }
+        read.close();
+        cout << "\n Total appointments this week: " << totalAppointments;
+        for (int i = 0; i < 7; i++)
+        {
+            cout << "\n Day " << (i + 1) << ": " << dailyAppointments[i] << " appointments";
+        }
+    }
+    else
+    {
+        cout << "\n No appointments found.";
+    }
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to schedule follow-up appointments
+void scheduleFollowUpAppointment(vector<int>& slots)
+{
+    system("cls");
+    cout << "\n ----- Schedule Follow-Up Appointment ---- \n";
+    string name, contact, reason;
+    cout << "\n Enter patient's name: ";
+    cin >> name;
+    cout << "\n Enter contact number: ";
+    cin >> contact;
+    cout << "\n Enter reason for follow-up appointment: ";
+    cin.ignore();
+    getline(cin, reason);
+    ofstream out("follow_up_appointments.dat", ios::app);
+    if (out)
+    {
+        out << "Name: " << name << "\n";
+        out << "Contact: " << contact << "\n";
+        out << "Reason: " << reason << "\n";
+        out.close();
+        cout << "\n Follow-up appointment scheduled successfully!";
+    }
+    else
+    {
+        cout << "\n Error scheduling follow-up appointment.";
+    }
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to view follow-up appointments
+void viewFollowUpAppointments()
+{
+    system("cls");
+    cout << "\n ----- View Follow-Up Appointments ---- \n";
+    ifstream read("follow_up_appointments.dat");
+    if (read)
+    {
+        string line;
+        while (getline(read, line))
+        {
+            cout << line << "\n";
+        }
+        read.close();
+    }
+    else
+    {
+        cout << "\n No follow-up appointments found.";
+    }
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+// Function to generate a daily report of appointments
+void generateDailyReport(const vector<int>& slots)
+{
+    system("cls");
+    cout << "\n ----- Generate Daily Report of Appointments ---- \n";
+    ifstream read("appointment.dat");
+    if (read)
+    {
+        string line;
+        int totalAppointments = 0;
+        while (getline(read, line))
+        {
+            totalAppointments++;
+        }
+        read.close();
+        cout << "\n Total appointments today: " << totalAppointments;
+    }
+    else
+    {
+        cout << "\n No appointments found.";
+    }
+    cout << "\n Press any key to continue...";
+    getchar(); getchar();
+}
+
+
+
+// Structure to hold patient1 information
+struct Patient1
+ {
+    int patient1ID;
+    string name;
+    bool hasInsurance;
+    double insuranceCoverage; // Percentage of coverage (0-100)
+};
+
+// Structure to hold doctor information
+struct Doctor
+{
+    int doctorID;
+    string name;
+};
+
+// Structure to hold invoice1 information
+struct Invoice1
+ {
+    int invoice1ID;
+    int patient1ID;
+    int doctorID;
+    string prescription;
+    double totalAmount;
+    bool isPaid;
+};
+
+struct BillingSystem
+ {
+private:
+    vector<Patient1> patient1s;
+    vector<Doctor> doctors;
+    vector<Invoice1> invoice1s;
+    int invoice1Counter = 0;
+
+public:
+    // Function to add a patient1
+    void addPatient1()
+     {
+        Patient1 newPatient1;
+        cout << "Enter Patient ID: ";
+        cin >> newPatient1.patient1ID;
+        cout << "Enter Patient Name: ";
+        cin.ignore(); // Clear the newline character from the input buffer
+        getline(cin, newPatient1.name);
+        cout << "Does the patient have insurance? (1 for Yes, 0 for No): ";
+        cin >> newPatient1.hasInsurance;
+        if (newPatient1.hasInsurance)
+            {
+            cout << "Enter Insurance Coverage Percentage: ";
+            cin >> newPatient1.insuranceCoverage;
+        }
+        else
+         {
+            newPatient1.insuranceCoverage = 0.0;
+        }
+        patient1s.push_back(newPatient1);
+        cout << "Patient added successfully." << endl;
+    }
+
+    // Function to add a doctor
+    void addDoctor()
+     {
+        Doctor newDoctor;
+        cout << "Enter Doctor ID: ";
+        cin >> newDoctor.doctorID;
+        cout << "Enter Doctor Name: ";
+        cin.ignore(); // Clear the newline character from the input buffer
+        getline(cin, newDoctor.name);
+        doctors.push_back(newDoctor);
+        cout << "Doctor added successfully." << endl;
+    }
+
+    // Function to generate an invoice1
+    void generateInvoice1()
+    {
+        Invoice1 newInvoice1;
+        newInvoice1.invoice1ID = ++invoice1Counter;
+        cout << "Enter Patient ID: ";
+        cin >> newInvoice1.patient1ID;
+        cout << "Enter Doctor ID: ";
+        cin >> newInvoice1.doctorID;
+        cout << "Enter Prescription: ";
+        cin.ignore(); // Clear the newline character from the input buffer
+        getline(cin, newInvoice1.prescription);
+        cout << "Enter Total Amount: ";
+        cin >> newInvoice1.totalAmount;
+        newInvoice1.isPaid = false;
+        invoice1s.push_back(newInvoice1);
+        cout << "Invoice1 generated with ID: " << newInvoice1.invoice1ID << endl;
+    }
+
+    // Function to process a payment
+    void processPayment()
+     {
+        int invoice1ID;
+        cout << "Enter Invoice ID to process payment: ";
+        cin >> invoice1ID;
+        for (auto &invoice1 : invoice1s)
+            {
+            if (invoice1.invoice1ID == invoice1ID)
+            {
+                if (invoice1.isPaid)
+                    {
+                    cout << "Invoice already paid." << endl;
+                }
+                 else
+                {
+                    invoice1.isPaid = true;
+                    cout << "Payment processed for Invoice ID: " << invoice1ID << endl;
+                }
+                return;
+            }
+        }
+        cout << "Invoice not found." << endl;
+    }
+
+    // Function to handle insurance claims
+    void handleInsuranceClaim()
+    {
+        int patient1ID, invoice1ID;
+        cout << "Enter Patient ID: ";
+        cin >> patient1ID;
+        cout << "Enter Invoice ID: ";
+        cin >> invoice1ID;
+        for (auto &invoice1 : invoice1s)
+            {
+            if (invoice1.invoice1ID == invoice1ID && invoice1.patient1ID == patient1ID)
+            {
+                for (const auto &patient1 : patient1s)
+                    {
+                    if (patient1.patient1ID == patient1ID)
+                     {
+                        if (patient1.hasInsurance)
+                            {
+                            double discount = (patient1.insuranceCoverage / 100) * invoice1.totalAmount;
+                            invoice1.totalAmount -= discount;
+                            cout << "Insurance applied. New total amount for Invoice1 ID " << invoice1ID << ": " << invoice1.totalAmount << endl;
+                        }
+                        else
+                        {
+                            cout << "Patient1 has no insurance." << endl;
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+        cout << "Invoice or Patient not found." << endl;
+    }
+
+    // Function to display all invoice1s
+    void displayInvoice1s()
+    {
+        cout << "Invoice1s:" << endl;
+        for (const auto &invoice1 : invoice1s)
+            {
+            cout << "Invoice ID: " << invoice1.invoice1ID
+                 << ", Patient ID: " << invoice1.patient1ID
+                 << ", Doctor ID: " << invoice1.doctorID
+                 << ", Prescription: " << invoice1.prescription
+                 << ", Total Amount: " << invoice1.totalAmount
+                 << ", Paid: " << (invoice1.isPaid ? "Yes" : "No") << endl;
+        }
+    }
+
+    // Function to search for a patient1 by ID
+    void searchPatient1ByID()
+     {
+        int patient1ID;
+        cout << "Enter Patient ID to search: ";
+        cin >> patient1ID;
+        for (const auto &patient1 : patient1s)
+         {
+            if (patient1.patient1ID == patient1ID)
+                {
+                cout << "Patient found: " << patient1.name << ", Insurance: " << (patient1.hasInsurance ? "Yes" : "No") << endl;
+                return;
+            }
+        }
+        cout << "Patient1 not found." << endl;
+    }
+
+    // Function to search for a doctor by ID
+    void searchDoctorByID()
+    {
+        int doctorID;
+        cout << "Enter Doctor ID to search: ";
+        cin >> doctorID;
+        for (const auto &doctor : doctors)
+        {
+            if (doctor.doctorID == doctorID)
+                {
+                cout << "Doctor found: " << doctor.name << endl;
+                return;
+            }
+        }
+        cout << "Doctor not found." << endl;
+    }
+
+    // Function to update patient1 information
+    void updatePatient1Info()
+    {
+        int patient1ID;
+        cout << "Enter Patient ID to update: ";
+        cin >> patient1ID;
+        for (auto &patient1 : patient1s)
+        {
+            if (patient1.patient1ID == patient1ID)
+                {
+                cout << "Enter new name: ";
+                cin.ignore(); // Clear the newline character from the input buffer
+                getline(cin, patient1.name);
+                cout << "Does the patient have insurance? (1 for Yes, 0 for No): ";
+                cin >> patient1.hasInsurance;
+                if (patient1.hasInsurance)
+                    {
+                    cout << "Enter new Insurance Coverage Percentage: ";
+                    cin >> patient1.insuranceCoverage;
+                }
+                 else
+                {
+                    patient1.insuranceCoverage = 0.0;
+                }
+                cout << "Patient1 information updated." << endl;
+                return;
+            }
+        }
+        cout << "Patient1 not found." << endl;
+    }
+
+
+    // Function to delete a patient1
+    void deletePatient1()
+     {
+        int patient1ID;
+        cout << "Enter Patient ID to delete: ";
+        cin >> patient1ID;
+        for (auto it = patient1s.begin(); it != patient1s.end(); ++it)
+         {
+            if (it->patient1ID == patient1ID)
+                {
+                patient1s.erase(it);
+                cout << "Patient deleted." << endl;
+                return;
+            }
+        }
+        cout << "Patient not found." << endl;
+    }
+
+    // Function to delete a doctor
+    void deleteDoctor()
+    {
+        int doctorID;
+        cout << "Enter Doctor ID to delete: ";
+        cin >> doctorID;
+        for (auto it = doctors.begin(); it != doctors.end(); ++it)
+         {
+            if (it->doctorID == doctorID)
+                {
+                doctors.erase(it);
+                cout << "Doctor deleted." << endl;
+                return;
+            }
+        }
+        cout << "Doctor not found." << endl;
+    }
+
+    // Function to reset the billing system (clear all data)
+    void resetSystem()
+    {
+        patient1s.clear();
+        doctors.clear();
+        invoice1s.clear();
+        invoice1Counter = 0;
+        cout << "Billing system reset." << endl;
+    }
+
+    void listAllPatient1s()
+    {
+    cout << "List of Patients:" << endl;
+    for (const auto &patient1 : patient1s)
+        {
+        cout << "Patient ID: " << patient1.patient1ID << ", Name: " << patient1.name << ", Insurance: " << (patient1.hasInsurance ? "Yes" : "No") << endl;
+    }
+}
+
+void listAllDoctors()
+{
+    cout << "List of Doctors:" << endl;
+    for (const auto &doctor : doctors)
+        {
+        cout << "Doctor ID: " << doctor.doctorID << ", Name: " << doctor.name << endl;
+    }
+}
+
+void getTotalRevenue()
+ {
+    double totalRevenue = 0.0;
+    for (const auto &invoice1 : invoice1s)
+    {
+        if (invoice1.isPaid)
+            {
+            totalRevenue += invoice1.totalAmount;
+        }
+    }
+    cout << "Total Revenue from Paid Invoice1s: $" << totalRevenue << endl;
+}
+
+void getTotalUnpaidInvoice1s()
+{
+    int unpaidCount = 0;
+    for (const auto &invoice1 : invoice1s)
+    {
+        if (!invoice1.isPaid)
+            {
+            unpaidCount++;
+        }
+    }
+    cout << "Total Unpaid Invoice1s: " << unpaidCount << endl;
+}
+
+void getPatient1Count()
+ {
+    cout << "Total Number of Patients: " << patient1s.size() << endl;
+}
+
+void getDoctorCount()
+{
+    cout << "Total Number of Doctors: " << doctors.size() << endl;
+}
+
+void getInvoice1Count()
+ {
+    cout << "Total Number of Invoices: " << invoice1s.size() << endl;
+}
+
+void getPatient1Invoice1s()
+ {
+    int patient1ID;
+    cout << "Enter Patient ID: ";
+    cin >> patient1ID;
+    cout << "Invoices for Patient ID " << patient1ID << ":" << endl;
+    for (const auto &invoice1 : invoice1s)
+     {
+        if (invoice1.patient1ID == patient1ID)
+            {
+            cout << "Invoice ID: " << invoice1.invoice1ID << ", Total Amount: $" << invoice1.totalAmount << ", Paid: " << (invoice1.isPaid ? "Yes" : "No") << endl;
+        }
+    }
+}
+
+void getDoctorInvoice1s()
+{
+    int doctorID;
+    cout << "Enter Doctor ID: ";
+    cin >> doctorID;
+    cout << "Invoice1s for Doctor ID " << doctorID << ":" << endl;
+    for (const auto &invoice1 : invoice1s)
+    {
+        if (invoice1.doctorID == doctorID)
+            {
+            cout << "Invoice1 ID: " << invoice1.invoice1ID << ", Total Amount: $" << invoice1.totalAmount << ", Paid: " << (invoice1.isPaid ? "Yes" : "No") << endl;
+        }
+    }
+}
+void getTotalInsuranceClaimsProcessed()
+{
+    double totalClaims = 0.0;
+    for (const auto &invoice1 : invoice1s)
+    {
+        if (invoice1.isPaid)
+            {
+            for (const auto &patient1 : patient1s)
+            {
+                if (patient1.patient1ID == invoice1.patient1ID && patient1.hasInsurance)
+                    {
+                    double discount = (patient1.insuranceCoverage / 100) * invoice1.totalAmount;
+                    totalClaims += discount;
+                }
+            }
+        }
+    }
+    cout << "Total Insurance Claims Processed: $" << totalClaims << endl;
+}
+
+void getPatient1DetailsByName()
+{
+    string name;
+    cout << "Enter Patient Name: ";
+    cin.ignore();
+    getline(cin, name);
+    for (const auto &patient1 : patient1s)
+     {
+        if (patient1.name == name)
+            {
+            cout << "Patient ID: " << patient1.patient1ID << ", Insurance: " << (patient1.hasInsurance ? "Yes" : "No") << endl;
+            return;
+        }
+    }
+    cout << "Patient1 not found." << endl;
+}
+
+void getDoctorDetailsByName()
+ {
+    string name;
+    cout << "Enter Doctor Name: ";
+    cin.ignore();
+    getline(cin, name);
+    for (const auto &doctor : doctors)
+        {
+        if (doctor.name == name)
+            {
+            cout << "Doctor ID: " << doctor.doctorID << endl;
+            return;
+        }
+    }
+    cout << "Doctor not found." << endl;
+}
+void getPatient1InsuranceStatus()
+{
+    int patient1ID;
+    cout << "Enter Patient ID: ";
+    cin >> patient1ID;
+    for (const auto &patient1 : patient1s)
+    {
+        if (patient1.patient1ID == patient1ID)
+            {
+            cout << "Patient ID: " << patient1ID << ", Insurance Status: " << (patient1.hasInsurance ? "Insured" : "Not Insured") << endl;
+            return;
+        }
+    }
+    cout << "Patient1 not found." << endl;
+}
+
+void getAllUnpaidInvoice1s()
+ {
+        cout << "List of Unpaid Invoices:" << endl;
+        for (const auto &invoice1 : invoice1s)
+        {
+            if (!invoice1.isPaid)
+                {
+                cout << "Invoice ID: " << invoice1.invoice1ID
+                     << ", Total Amount: $" << fixed  << invoice1.totalAmount << endl;
+            }
+        }
+    }
+void getInvoice1DetailsByID()
+{
+    int invoice1ID;
+    cout << "Enter Invoice ID: ";
+    cin >> invoice1ID;
+    for (const auto & invoice1 : invoice1s)
+     {
+        if (invoice1.invoice1ID == invoice1ID)
+            {
+            cout << "Invoice ID: " << invoice1.invoice1ID << ", Patient ID: " << invoice1.patient1ID << ", Doctor ID: " << invoice1.doctorID << ", Total Amount: $" << invoice1.totalAmount << ", Paid: " << (invoice1.isPaid ? "Yes" : "No") << endl;
+            return;
+        }
+    }
+    cout << "Invoice not found." << endl;
+}
+
+ void getPatient1DetailsByPartialName()
+ {
+        string partialName;
+        cout << "Enter Partial Patient Name: ";
+        cin.ignore();
+        getline(cin, partialName);
+        cout << "Patient1s matching '" << partialName << "':" << endl;
+        for (const auto &patient1 : patient1s)
+        {
+            if (patient1.name.find(partialName) != string::npos)
+                {
+                cout << "Patient1 ID: " << patient1.patient1ID
+                     << ", Name: " << patient1.name
+                     << ", Insurance: " << (patient1.hasInsurance ? "Yes" : "No")
+                     << ", Coverage: " << patient1.insuranceCoverage << "%" << endl;
+            }
+        }
+    }
+
+     // Function to generate a report of all patient1s
+    void generatePatient1Report()
+     {
+        cout << "Patient1 Report:" << endl;
+        for (const auto &patient1 : patient1s)
+            {
+            cout << "Patient ID: " << patient1 .patient1ID
+                 << ", Name: " << patient1.name
+                 << ", Insurance: " << (patient1.hasInsurance ? "Yes" : "No")
+                 << ", Coverage: " << patient1.insuranceCoverage << "%" << endl;
+        }
+    }
+
+
+
+
+void getDoctorDetailsByPartialName()
+ {
+    string partialName;
+    cout << "Enter Partial Doctor Name: ";
+    cin.ignore();
+    getline(cin, partialName);
+    cout << "Doctors matching '" << partialName << "':" << endl;
+    for (const auto &doctor : doctors)
+    {
+        if (doctor.name.find(partialName) != string::npos)
+            {
+            cout << "Doctor ID: " << doctor.doctorID << ", Name: " << doctor.name << endl;
+        }
+    }
+}
+
+void updateInvoice1Status()
+{
+    int invoice1ID;
+    cout << "Enter Invoice ID: ";
+    cin >> invoice1ID;
+    for (auto &invoice1 : invoice1s)
+     {
+        if (invoice1.invoice1ID == invoice1ID)
+            {
+            invoice1.isPaid = true;
+            cout << "Invoice ID " << invoice1ID << " has been marked as paid." << endl;
+            return;
+        }
+    }
+    cout << "Invoice1 not found." << endl;
+}
+
+void getTotalClaimsForPatient1()
+ {
+    int patient1ID;
+    cout << "Enter Patient ID: ";
+    cin >> patient1ID;
+    double totalClaims = 0.0;
+    for (const auto &invoice1 : invoice1s)
+        {
+        if (invoice1.patient1ID == patient1ID && invoice1.isPaid)
+         {
+            for (const auto &patient1 : patient1s)
+            {
+                if (patient1.patient1ID == patient1ID && patient1.hasInsurance)
+                 {
+                    double discount = (patient1.insuranceCoverage / 100) * invoice1.totalAmount;
+                    totalClaims += discount;
+                }
+            }
+        }
+    }
+    cout << "Total Claims for Patient1 ID " << patient1ID << ": $" << totalClaims << endl;
+}
+
+
+void getPatient1sByAge()
+{
+    int age;
+    cout << "Enter Age: ";
+    cin >> age;
+    // Assuming we have a way to store age in the Patient1 structure
+    // For demonstration, we will assume all patient1s are of the same age
+    int count = patient1s.size(); // Placeholder for actual age filtering
+    cout << "Total Patient1s with Age " << age << ": " << count << endl;
+}
+
+void getDoctorsByExperience()
+{
+    int years;
+    cout << "Enter Years of Experience: ";
+    cin >> years;
+    // Assuming we have a way to store experience in the Doctor structure
+    // For demonstration, we will assume all doctors have the same experience
+    int count = doctors.size(); // Placeholder for actual experience filtering
+    cout << "Total Doctors with " << years << " years of experience: " << count << endl;
+}
+
+
+void getPatient1sByMedication()
+ {
+    string medication;
+    cout << "Enter Medication: ";
+    cin.ignore();
+    getline(cin, medication);
+    // This function would require a way to associate patient1s with medications
+    // For demonstration, we will assume all patient1s are taking the same medication
+    int count = patient1s.size(); // Placeholder for actual medication filtering
+    cout << "Total Patients taking Medication '" << medication << "': " << count << endl;
+}
+
+void getDoctorsBySpecialty()
+ {
+    string specialty;
+    cout << "Enter Specialty: ";
+    cin.ignore();
+    getline(cin, specialty);
+    // This function would require a way to associate doctors with specialties
+    // For demonstration, we will assume all doctors have the same specialty
+    int count = doctors.size(); // Placeholder for actual specialty filtering
+    cout << "Total Doctors with Specialty '" << specialty << "': " << count << endl;
+}
+
+
+
+void getPatient1sByTreatmentHistory()
+ {
+    string treatment;
+    cout << "Enter Treatment History: ";
+    cin.ignore();
+    getline(cin, treatment);
+    // This function would require a way to associate patient1s with treatment histories
+    // For demonstration, we will assume all patient1s have the same treatment history
+    int count = patient1s.size(); // Placeholder for actual treatment history filtering
+    cout << "Total Patients with Treatment History '" << treatment << "': " << count << endl;
+}
+
+
+void getDoctorsByAvailability()
+ {
+    string availability;
+    cout << "Enter Availability (e.g., Available, Not Available): ";
+    cin.ignore();
+    getline(cin, availability);
+    // This function would require a way to associate doctors with availability
+    // For demonstration, we will assume all doctors have the same availability
+    int count = doctors.size(); // Placeholder for actual availability filtering
+    cout << "Total Doctors with Availability '" << availability << "': " << count << endl;
+}
+
+
+void getPatient1sByReferralSource()
+ {
+    string referralSource;
+    cout << "Enter Referral Source: ";
+    cin.ignore();
+    getline(cin, referralSource);
+    // This function would require a way to associate patient1s with referral sources
+    // For demonstration, we will assume all patient1s have the same referral source
+    int count = patient1s.size(); // Placeholder for actual referral source filtering
+    cout << "Total Patients referred by '" << referralSource << "': " << count << endl;
+}
+
+
+
+
+void getDoctorsByPatient1Load()
+{
+    int load;
+    cout << "Enter Maximum Patient1 Load: ";
+    cin >> load;
+    // This function would require a way to associate doctors with their patient1 load
+    // For demonstration, we will assume all doctors have the same patient1 load
+    int count = doctors.size(); // Placeholder for actual patient1 load filtering
+    cout << "Total Doctors with a patient1 load of up to " << load << ": " << count << endl;
+}
+
+
+void getPatient1sByLastVisitDate()
+ {
+    string date;
+    cout << "Enter Last Visit Date (YYYY-MM-DD): ";
+    cin >> date;
+    // This function would require a way to associate patient1s with their last visit dates
+    // For demonstration, we will assume all patient1s have the same last visit date
+    int count = patient1s.size(); // Placeholder for actual last visit date filtering
+    cout << "Total Patients with last visit on " << date << ": " << count << endl;
+}
+
+void getDoctorsByRating()
+ {
+    float rating;
+    cout << "Enter Minimum Rating (0-5): ";
+    cin >> rating;
+    // This function would require a way to associate doctors with their ratings
+    // For demonstration, we will assume all doctors have the same rating
+    int count = doctors.size(); // Placeholder for actual rating filtering
+    cout << "Total Doctors with a rating of " << rating << " or higher: " << count << endl;
+}
+
+
+
+
+
+
+void getPatient1sByAgeRange()
+{
+    int minAge, maxAge; // Variables to hold the minimum and maximum age
+    cout << "Enter Minimum Age: "; // Prompt for minimum age
+    cin >> minAge; // Read minimum age
+    cout << "Enter Maximum Age: "; // Prompt for maximum age
+    cin >> maxAge; // Read maximum age
+
+    // Placeholder for actual age filtering
+    cout << "Patient1s in the age range " << minAge << " to " << maxAge << ":" << endl;
+    for (const auto &patient1 : patient1s)
+        {
+        // Assuming we have a way to get the age of the patient1
+        // For demonstration, we will assume all patient1s are within the age range
+        cout << "Patient ID: " << patient1.patient1ID
+             << ", Name: " << patient1.name
+             << ", Age: (Assumed Age)" << endl; // Placeholder for actual age
+    }
+}
+
+
+void getDoctorsBySpecialtyAndExperience()
+{
+    string specialty; // Variable to hold the specialty
+    int minExperience; // Variable to hold minimum years of experience
+    cout << "Enter Specialty: "; // Prompt for specialty
+    cin.ignore(); // Clear the newline character from the input buffer
+    getline(cin, specialty); // Read specialty
+    cout << "Enter Minimum Years of Experience: "; // Prompt for experience
+    cin >> minExperience; // Read minimum experience
+
+    cout << "Doctors with specialty '" << specialty << "' and at least "
+         << minExperience << " years of experience:" << endl;
+
+    for ( auto &doctor : doctors)
+        {
+        // Placeholder for actual experience filtering
+        // Assuming we have a way to get the experience of the doctor
+        // For demonstration, we will assume all doctors meet the criteria
+        cout << "Doctor ID: " << doctor.doctorID
+             << ", Name: " << doctor.name
+
+             << ", Experience: (Assumed Experience)" << endl; // Placeholder for actual experience
+    }
+}
+
+
+
+void getTotalPatient1sTreatedByEachDoctor()
+{
+    cout << "Total Patient1s Treated by Each Doctor:" << endl; // Header for the report
+    for (const auto &doctor : doctors)
+        {
+        int patient1Count = 0; // Counter for patient1s treated by the doctor
+        for (const auto &invoice1 : invoice1s)
+        {
+            if (invoice1.doctorID == doctor.doctorID)
+                { // Check if the invoice1 is associated with the doctor
+                patient1Count++; // Increment the patient1 count
+            }
+        }
+        cout << "Doctor ID: " << doctor.doctorID
+             << ", Name: " << doctor.name
+             << ", Total Patient1s Treated: " << patient1Count << endl; // Display the count
+    }
+}
+
+
+void getAverageTreatmentCostPerPatient1()
+{
+    double totalCost = 0.0; // Variable to hold the total cost
+    int totalPatient1s = 0; // Variable to hold the total number of patient1s
+
+    for (const auto &invoice1 : invoice1s)
+        {
+        totalCost += invoice1.totalAmount; // Accumulate the total cost
+        totalPatient1s++; // Increment the patient1 count
+    }
+
+    if (totalPatient1s > 0)
+        { // Check to avoid division by zero
+        double averageCost = totalCost / totalPatient1s; // Calculate average cost
+        cout << "Average Treatment Cost per Patient: $" << fixed << averageCost << endl; // Display average cost
+    }
+     else
+    {
+        cout << "No patient1s found." << endl; // Message if no patient1s exist
+    }
+}
+
+
+
+
+
+};
+
+
+
+void BillingMenu()
+{
+    BillingSystem billingSystem;
+    int choice;
+
+    do
+        {
+        cout << "\nBilling System Menu:\n";
+        cout << "1. Add Patient\n";
+        cout << "2. Add Doctor\n";
+        cout << "3. Generate Invoice\n";
+        cout << "4. Process Payment\n";
+        cout << "5. Handle Insurance Claim\n";
+        cout << "6. Display Invoices\n";
+        cout << "7. Search Patient by ID\n";
+        cout << "8. Search Doctor by ID\n";
+        cout << "9. Update Patient Information\n";
+        cout << "10. Delete Patient\n";
+        cout << "11. Delete Doctor\n";
+        cout << "12. Reset System\n";
+        cout << "13. Exit\n";
+        cout << "Enter your choice: ";
+        cin >> choice;
+
+        switch (choice)
+         {
+            case 1: billingSystem.addPatient1();
+            break;
+            case 2: billingSystem.addDoctor();
+             break;
+            case 3: billingSystem.generateInvoice1();
+             break;
+            case 4: billingSystem.processPayment();
+             break;
+            case 5: billingSystem.handleInsuranceClaim();
+            break;
+            case 6: billingSystem.displayInvoice1s();
+            break;
+            case 7: billingSystem.searchPatient1ByID();
+            break;
+            case 8: billingSystem.searchDoctorByID();
+            break;
+            case 9: billingSystem.updatePatient1Info();
+            break;
+            case 10: billingSystem.deletePatient1();
+            break;
+            case 11: billingSystem.deleteDoctor();
+             break;
+            case 12: billingSystem.resetSystem();
+             break;
+            case 13: cout << "Returning to Main Menu" << endl;
+            break;
+            default: cout << "Invalid choice. Please try again." << endl;
+             break;
+        }
+    } while (choice != 13);
+
+}
+
+int main(int argc, char** argv)
+{
+    //int argc, char** argv
+
+    vector<User> users;
+    string username, password, role;
+
+    // Prompt for username and password
+    cout << "Enter Username: ";
+    cin >> username;
+    cout << "Enter Password: ";
+    cin >> password;
+    loadUsers(users);
+
+    // Check credentials
+    if (authenticateUser (users, username, password, role))
+        {
+        cout << "Login successful! Role: " << role << endl;
+        cout << "\nWelcome to Hospital Management System\n";
+
+        // Load necessary data
+        loadPatientsFromFile();
+        loadMedicinesFromFile();
+        loadInvoicesFromFile();
+
+        int choice;
+        do
+            {
+            clearScreen();
+            cout << "\n--- Main Page ---\n";
+            cout << "1. Add User\n";
+            cout << "2. Patient Registration\n";
+            cout << "3. Pharmacy Management\n";
+            cout << "4. Appointments\n";
+            cout << "5. Patient Management\n";
+            cout << "6. Billing And Payment\n";
+            cout << "7. Exit\n";
+            cout << "Enter your choice: ";
+            cin >> choice;
+
+            clearScreen();
+
+            switch (choice)
+            {
+                case 1: {
+                    User user;
+                    cout << "Enter Username: ";
+                    cin >> user.username;
+                    cout << "Enter Password: ";
+                    cin >> user.password;
+                    cout << "Enter Role (admin/doctor): ";
+                    cin >> user.role;
+                    users.push_back(user);
+                    saveUsers();
+                    cout << "User  added successfully!\n";
+                    break;
+                }
+                case 2:
+                    patientRegistrationMenu();
+                    break;
+                case 3:
+                    pharmacyManagementMenu();
+                    break;
+                case 4:
+                    appointments(argc, argv);
+                    break;
+                case 5:
+                    PatientManagementMenu();
+                    break;
+                case 6:
+                    BillingMenu();
+                case 7:
+                    cout << "Exiting\n";
+                    exit;
+                default:
+                    cout << "Invalid choice.\n";
+            }
+
+
+        }while (choice != 7);
+    }
+     else
+        {
+        cout << "Invalid username or password.\n";
+        return 1;  // Exit if credentials are invalid
+    }
+
+
+}
+
