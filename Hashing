@@ -1,0 +1,82 @@
+#include <iostream>
+#include <list>
+#include <vector>
+using namespace std;
+
+// HashTable class
+class HashTable {
+private:
+    vector<list<int>> table;  // Vector of lists for separate chaining
+    int size;                // Number of buckets
+
+    // Hash function
+    int hashFunction(int key) {
+        return key % size;
+    }
+
+public:
+    // Constructor to initialize the table
+    HashTable(int s) : size(s) {
+        table.resize(size);
+    }
+
+    // Insert a key into the hash table
+    void insert(int key) {
+        int index = hashFunction(key);
+        table[index].push_back(key);
+    }
+
+    // Delete a key from the hash table
+    void remove(int key) {
+        int index = hashFunction(key);
+        table[index].remove(key);
+    }
+
+    // Search for a key in the hash table
+    bool search(int key) {
+        int index = hashFunction(key);
+        for (int x : table[index]) {
+            if (x == key) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Display the hash table
+    void display() {
+        for (int i = 0; i < size; ++i) {
+            cout << "Bucket " << i << ": ";
+            for (int x : table[i]) {
+                cout << x << " ";
+            }
+            cout << endl;
+        }
+    }
+};
+
+// Main function
+int main() {
+    HashTable ht(7); // Create a hash table with 7 buckets
+
+    // Insert keys into the hash table
+    ht.insert(10);
+    ht.insert(20);
+    ht.insert(15);
+    ht.insert(7);
+    ht.insert(3);
+
+    cout << "Hash table after insertion:" << endl;
+    ht.display();
+
+    // Search for a key
+    int key = 15;
+    cout << "\nSearch for " << key << ": " << (ht.search(key) ? "Found" : "Not Found") << endl;
+
+    // Remove a key
+    ht.remove(10);
+    cout << "\nHash table after removing 10:" << endl;
+    ht.display();
+
+    return 0;
+}
